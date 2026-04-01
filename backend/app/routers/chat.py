@@ -5,6 +5,7 @@ from typing import List
 from sqlmodel import Session as DBSession, select
 import json
 import os
+import pathlib
 
 from app.database import get_db
 from app.config import settings
@@ -24,7 +25,12 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat")
 async def chat(request: ChatRequest, db: DBSession = Depends(get_db)):
-    index_path = f"{settings.faiss_index_dir}/{request.session_id}.index"
+    index_path = (pathlib.Path(settings.faiss_index_dir) / f"{request.session_id}.index").resolve()
+    allowed = pathlib.Path(settings.faiss_index_dir).resolve()
+    if not str(index_path).startswith(str(allowed)):
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    index_path = str(index_path)
+
     if not os.path.exists(index_path):
         raise HTTPException(status_code=404, detail="Session index not found")
 
@@ -47,19 +53,25 @@ async def chat(request: ChatRequest, db: DBSession = Depends(get_db)):
     top_score = scores[0] if scores else 0.0
     low_confidence = top_score < LOW_CONFIDENCE_THRESHOLD
 
+    # Cap history to last 10 turns
+    history = request.history[-10:]
+
     def event_stream():
-        # Stream tokens
-        for token in stream_answer(request.question, chunks, request.history):
-            yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
+        try:
+            # Stream tokens
+            for token in stream_answer(request.question, chunks, history):
+                yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
 
-        # Emit citations event
-        citations = [
-            {"file": c.file_name, "page": c.page_num, "text": c.text, "score": id_to_score.get(c.id, 0)}
-            for c in chunks
-        ]
-        yield f"event: citations\ndata: {json.dumps({'citations': citations, 'low_confidence': low_confidence})}\n\n"
+            # Emit citations event
+            citations = [
+                {"file": c.file_name, "page": c.page_num, "text": c.text, "score": id_to_score.get(c.id, 0)}
+                for c in chunks
+            ]
+            yield f"event: citations\ndata: {json.dumps({'citations': citations, 'low_confidence': low_confidence})}\n\n"
 
-        # Done
-        yield f"event: done\ndata: {{}}\n\n"
+            # Done
+            yield f"event: done\ndata: {json.dumps({})}\n\n"
+        except Exception as exc:
+            yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
