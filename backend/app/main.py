@@ -10,7 +10,10 @@ app = FastAPI(title="RAG Study Assistant")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://study-assistant.vercel.app",  # Update with actual Vercel domain after deploy
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
