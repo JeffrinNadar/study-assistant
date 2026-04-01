@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.database import create_db
 
 app = FastAPI(title="RAG Study Assistant")
 
@@ -9,6 +10,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def on_startup():
+    create_db()
 
 @app.get("/ping")
 def ping():
