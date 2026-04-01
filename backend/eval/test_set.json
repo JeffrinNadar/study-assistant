@@ -1,0 +1,14 @@
+[
+  {
+    "question": "What is gradient descent?",
+    "ground_truth": "Gradient descent is an optimization algorithm that minimizes a loss function by iteratively moving in the direction of steepest descent as defined by the negative of the gradient."
+  },
+  {
+    "question": "What is the difference between supervised and unsupervised learning?",
+    "ground_truth": "Supervised learning uses labeled training data where the algorithm learns to map inputs to outputs. Unsupervised learning finds hidden patterns in unlabeled data without predefined outputs."
+  },
+  {
+    "question": "What is backpropagation?",
+    "ground_truth": "Backpropagation is an algorithm for training neural networks by computing the gradient of the loss function with respect to each weight using the chain rule of calculus, then updating weights via gradient descent."
+  }
+]
