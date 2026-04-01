@@ -4,7 +4,7 @@ pymupdf==1.24.0
 langchain==0.2.0
 langchain-text-splitters==0.2.0
 openai==1.30.0
-faiss-cpu==1.8.0
+faiss-cpu==1.13.0
 sqlmodel==0.0.19
 python-dotenv==1.0.0
 sse-starlette==2.1.0
