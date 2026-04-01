@@ -14,12 +14,30 @@ from app.services.vector_store import VectorStore
 
 router = APIRouter()
 
+MAX_FILES = 5
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB
+
 @router.post("/upload")
 async def upload(
     files: List[UploadFile] = File(...),
     session_id: Optional[str] = Form(None),
     db: DBSession = Depends(get_db),
 ):
+    if len(files) > MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_FILES} files per upload")
+
+    # Check file sizes (read content, then check size)
+    file_contents = {}
+    for upload_file in files:
+        content = await upload_file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{upload_file.filename} exceeds 20 MB limit"
+            )
+        file_contents[upload_file.filename] = content
+        await upload_file.seek(0)  # reset for later reading
+
     # Create or fetch session
     if session_id:
         session = db.get(Session, session_id)
@@ -46,7 +64,7 @@ async def upload(
         session_upload_dir = os.path.join(settings.upload_dir, session_id)
         os.makedirs(session_upload_dir, exist_ok=True)
         file_path = os.path.join(session_upload_dir, upload_file.filename)
-        content = await upload_file.read()
+        content = file_contents[upload_file.filename]
         with open(file_path, "wb") as f:
             f.write(content)
 
