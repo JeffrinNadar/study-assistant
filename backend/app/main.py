@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import create_db
 from app.routers.upload import router as upload_router
+from app.routers.chat import router as chat_router
 
 app = FastAPI(title="RAG Study Assistant")
 
@@ -17,6 +18,7 @@ def on_startup():
     create_db()
 
 app.include_router(upload_router)
+app.include_router(chat_router)
 
 @app.get("/ping")
 def ping():
