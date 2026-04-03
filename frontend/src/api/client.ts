@@ -77,6 +77,7 @@ export function streamChat(
           if (eventLine === 'token') handlers.onToken(payload.content);
           else if (eventLine === 'citations') handlers.onCitations(payload.citations, payload.low_confidence);
           else if (eventLine === 'done') handlers.onDone();
+          else if (eventLine === 'error') handlers.onError(new Error(payload.detail ?? 'Stream error'));
         }
       }
     } catch (err) {

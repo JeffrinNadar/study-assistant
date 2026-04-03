@@ -1,22 +1,25 @@
 import numpy as np
 from typing import List
-from openai import OpenAI
+from openai import AzureOpenAI
 from app.config import settings
 
-client = OpenAI(api_key=settings.openai_api_key)
+client = AzureOpenAI(
+    api_key=settings.embedding_api_key,
+    azure_endpoint=settings.embedding_api_endpoint,
+    api_version=settings.embedding_api_version,
+)
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_DIM = 1536
+EMBEDDING_DIM = 3072
 
 def embed_texts(texts: List[str]) -> np.ndarray:
-    """Embed a list of texts. Returns normalized array of shape (N, 1536).
+    """Embed a list of texts. Returns normalized array of shape (N, 3072).
 
     Vectors are L2-normalized so cosine similarity = inner product.
     """
     if not texts:
         raise ValueError("embed_texts requires at least one text")
 
-    response = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
+    response = client.embeddings.create(model=settings.embedding_deployment, input=texts)
     vectors = np.array([item.embedding for item in response.data], dtype=np.float32)
 
     # L2-normalize so FAISS IndexFlatIP computes cosine similarity

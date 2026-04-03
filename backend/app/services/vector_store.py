@@ -3,7 +3,7 @@ import numpy as np
 from typing import List, Tuple
 import os
 
-EMBEDDING_DIM = 1536
+EMBEDDING_DIM = 3072
 
 class VectorStore:
     """FAISS IDMap wrapper. Maps SQLite Chunk.id (external_id) to vectors.

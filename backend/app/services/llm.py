@@ -1,9 +1,13 @@
 from typing import Generator, List
-from openai import OpenAI
+from openai import AzureOpenAI
 from app.config import settings
 from app.models.chunk import Chunk
 
-client = OpenAI(api_key=settings.openai_api_key)
+client = AzureOpenAI(
+    api_key=settings.chat_api_key,
+    azure_endpoint=settings.chat_api_endpoint,
+    api_version=settings.chat_api_version,
+)
 
 SYSTEM_PROMPT = """You are a study assistant. Answer the student's question using ONLY the context provided below.
 If the answer is not in the context, respond: "I couldn't find this in your uploaded documents."
@@ -28,11 +32,13 @@ def stream_answer(
         {"role": "user", "content": f"QUESTION: {question}"},
     ]
     with client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.chat_deployment,
         messages=messages,
         stream=True,
     ) as stream:
         for chunk in stream:
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta.content
             if delta:
                 yield delta
