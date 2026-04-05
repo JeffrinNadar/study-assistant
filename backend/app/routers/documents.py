@@ -32,7 +32,10 @@ def delete_document(doc_id: str, db: DBSession = Depends(get_db)):
         store = VectorStore(index_path=str(index_path))
         store.load()
         store.remove_by_ids(faiss_ids)
-        store.save()
+        if store.total_vectors() == 0:
+            os.remove(str(index_path))
+        else:
+            store.save()
 
     # Remove from SQLite
     for chunk in chunks:

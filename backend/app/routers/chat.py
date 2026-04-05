@@ -32,7 +32,7 @@ async def chat(request: ChatRequest, db: DBSession = Depends(get_db)):
     index_path = str(index_path)
 
     if not os.path.exists(index_path):
-        raise HTTPException(status_code=404, detail="Session index not found")
+        raise HTTPException(status_code=404, detail="No documents in this session. Upload a PDF first.")
 
     store = VectorStore(index_path=index_path)
     store.load()

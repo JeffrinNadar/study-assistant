@@ -60,7 +60,10 @@ export function streamChat(
         signal: controller.signal,
       });
 
-      if (!resp.ok) throw new Error(`Chat failed: ${resp.status}`);
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => null);
+        throw new Error(body?.detail ?? `Chat failed: ${resp.status}`);
+      }
 
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
