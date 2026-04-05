@@ -14,6 +14,8 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API).
 
 - **Document ingestion:** PDF → PyMuPDF text extraction → LangChain chunking (512 chars, 50 overlap) → OpenAI `text-embedding-3-small` embeddings → FAISS IndexFlatIP
 - **Chat pipeline:** Question embedding → FAISS cosine similarity search (top-5) → GPT-4o-mini streaming via SSE → citations with scores
+- **Session management:** Sessions auto-prune when they have no documents; full delete cascades to chunks, vectors, and uploaded files
+- **Upload confirmation:** Green success banner shown in the chat panel after successful PDF upload
 
 ## Getting Started
 
@@ -51,7 +53,8 @@ UPLOAD_DIR=./uploads
 |--------|----------|-------------|
 | `POST` | `/upload` | Upload PDFs (max 5, 20 MB each); returns chunk counts |
 | `POST` | `/chat` | SSE streaming chat with citations |
-| `GET` | `/sessions` | List sessions |
+| `GET` | `/sessions` | List sessions (auto-prunes empty sessions) |
+| `DELETE` | `/sessions/{id}` | Delete session and all associated data |
 | `GET` | `/documents` | List documents for a session |
 | `DELETE` | `/documents/{id}` | Remove document and its vectors |
 

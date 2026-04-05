@@ -56,6 +56,10 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The
 - **Tailwind CSS v4**: The scaffold installed Tailwind v4 (not v3). v4 uses `@import "tailwindcss"` in CSS and a Vite plugin (`@tailwindcss/vite`) instead of PostCSS. Utility class names are the same as v3.
 - **`react-markdown` className**: `react-markdown` v10 does not accept a `className` prop on `<ReactMarkdown>` — the `prose` class was removed from `MessageBubble.tsx`.
 - **SSE via `fetch` (not `EventSource`)**: The SSE client in `api/client.ts` uses `fetch` + `ReadableStream` with an `AbortController` because the backend uses `POST /chat`, and `EventSource` only supports GET.
+- **Empty FAISS index cleanup**: When deleting a document leaves 0 vectors, the FAISS index file is deleted rather than saved empty. This prevents 422/404 errors when chatting in a session with no documents.
+- **Session auto-prune**: `GET /sessions` automatically deletes sessions with 0 documents (e.g., after indices are manually cleared). `DELETE /sessions/{id}` removes all associated data including chunks, documents, FAISS index, and uploaded files.
+- **Upload success banner**: The success notification lives in `ChatPanel` (not `UploadZone`) because `UploadZone` unmounts when a new session is created on first upload.
+- **SSE error detail forwarding**: The frontend `streamChat` reads the JSON response body on non-OK responses to surface backend error messages (e.g., "No documents in this session") instead of raw status codes.
 
 ## Backend Layout
 
@@ -68,8 +72,8 @@ backend/
 │   ├── routers/
 │   │   ├── upload.py        # POST /upload — full ingestion pipeline
 │   │   ├── chat.py          # POST /chat — SSE streaming with FAISS retrieval
-│   │   ├── sessions.py      # GET/POST /sessions
-│   │   └── documents.py     # GET /documents, DELETE /documents/{id}
+│   │   ├── sessions.py      # GET/POST/DELETE /sessions; auto-prunes empty sessions
+│   │   └── documents.py     # GET /documents, DELETE /documents/{id}; cleans up empty FAISS index
 │   ├── services/
 │   │   ├── pdf_parser.py    # parse_pdf() → List[ParsedPage]
 │   │   ├── chunker.py       # chunk_pages() → List[TextChunk]
@@ -98,12 +102,12 @@ backend/
 frontend/src/
 ├── types.ts                 # Session, Document, Citation, Message, UploadResponse, SSEEvent
 ├── api/client.ts            # Axios instance; uploadFiles, getSessions, getDocuments,
-│                            # deleteDocument, streamChat (fetch + AbortController)
+│                            # deleteDocument, deleteSession, streamChat (fetch + AbortController)
 ├── store/useAppStore.ts     # Zustand: sessions, messages, streaming state + actions
 └── components/
     ├── App.tsx              # Two-column layout: <Sidebar> + <ChatPanel>
-    ├── Sidebar.tsx          # Session list + document list with delete; loads on mount
-    ├── ChatPanel.tsx        # Message list, UploadZone (no session), input bar + send
+    ├── Sidebar.tsx          # Session list + document list with delete buttons; loads on mount
+    ├── ChatPanel.tsx        # Message list, upload success banner, UploadZone, input bar + send
     ├── MessageBubble.tsx    # User/assistant bubbles; markdown; streaming cursor ▍;
     │                        # low-confidence amber warning; CitationCard list
     ├── CitationCard.tsx     # Expandable: file, page, % match badge (green ≥70% / yellow <70%)
@@ -137,12 +141,18 @@ History capped at last 10 turns server-side.
 
 ### `GET /sessions`
 Returns sessions ordered by `created_at` descending, each with `doc_count`.
+Auto-prunes sessions with 0 documents (cleans up chunks, FAISS index, and uploaded files).
+
+### `DELETE /sessions/{session_id}`
+Deletes a session and all associated data: chunks, documents, FAISS index file, and uploaded PDFs.
+Returns `{ "success": true }`.
 
 ### `GET /documents?session_id={id}`
 Returns documents for a session.
 
 ### `DELETE /documents/{doc_id}`
 Removes document, all its chunks from SQLite, and all its vectors from the FAISS index.
+If the FAISS index becomes empty after removal, the index file is deleted.
 Returns `{ "success": true, "chunks_removed": N }`.
 
 ## Environment Variables
