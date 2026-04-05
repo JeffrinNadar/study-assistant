@@ -5,7 +5,7 @@ import { uploadFiles } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 
 interface Props {
-  onUploaded?: () => void;
+  onUploaded?: (fileCount: number) => void;
 }
 
 export function UploadZone({ onUploaded }: Props) {
@@ -20,7 +20,7 @@ export function UploadZone({ onUploaded }: Props) {
     try {
       const resp = await uploadFiles(accepted, currentSessionId ?? undefined);
       if (!currentSessionId) setCurrentSessionId(resp.session_id);
-      onUploaded?.();
+      onUploaded?.(resp.files.length);
     } catch {
       setError('Upload failed. Please try again.');
     } finally {

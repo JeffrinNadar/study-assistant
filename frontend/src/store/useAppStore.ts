@@ -21,6 +21,7 @@ interface AppState {
   finishMessage: (id: string, citations: Citation[], lowConfidence: boolean) => void;
   setIsStreaming: (v: boolean) => void;
   removeDocument: (docId: string) => void;
+  removeSession: (sessionId: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -66,4 +67,12 @@ export const useAppStore = create<AppState>((set) => ({
 
   removeDocument: (docId) =>
     set((s) => ({ documents: s.documents.filter((d) => d.id !== docId) })),
+
+  removeSession: (sessionId) =>
+    set((s) => ({
+      sessions: s.sessions.filter((sess) => sess.id !== sessionId),
+      ...(s.currentSessionId === sessionId
+        ? { currentSessionId: null, documents: [], messages: [] }
+        : {}),
+    })),
 }));

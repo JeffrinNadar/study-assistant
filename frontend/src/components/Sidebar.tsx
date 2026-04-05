@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { Trash2, BookOpen } from 'lucide-react';
-import { getSessions, getDocuments, deleteDocument } from '../api/client';
+import { getSessions, getDocuments, deleteDocument, deleteSession } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 
 export function Sidebar() {
-  const { sessions, currentSessionId, documents, setSessions, setCurrentSessionId, setDocuments, removeDocument } = useAppStore();
+  const { sessions, currentSessionId, documents, setSessions, setCurrentSessionId, setDocuments, removeDocument, removeSession } = useAppStore();
 
   useEffect(() => {
     getSessions().then(setSessions).catch(() => {});
@@ -21,6 +21,12 @@ export function Sidebar() {
     removeDocument(docId);
   };
 
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    await deleteSession(sessionId);
+    removeSession(sessionId);
+  };
+
   return (
     <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
       <div className="p-4 border-b border-gray-200">
@@ -34,16 +40,24 @@ export function Sidebar() {
         <div className="p-3">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Sessions</p>
           {sessions.map((s) => (
-            <button
+            <div
               key={s.id}
               onClick={() => selectSession(s.id)}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 ${
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 cursor-pointer flex items-center justify-between group ${
                 s.id === currentSessionId ? 'bg-blue-100 text-blue-800' : 'hover:bg-gray-100 text-gray-700'
               }`}
             >
-              {s.name}
-              <span className="block text-xs text-gray-400">{s.doc_count} doc(s)</span>
-            </button>
+              <div className="min-w-0 flex-1">
+                <div className="truncate">{s.name}</div>
+                <span className="block text-xs text-gray-400">{s.doc_count} doc(s)</span>
+              </div>
+              <button
+                onClick={(e) => handleDeleteSession(e, s.id)}
+                className="text-red-400 opacity-0 group-hover:opacity-100 ml-2 shrink-0"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           ))}
         </div>
 

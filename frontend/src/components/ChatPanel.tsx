@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import { Send, Loader2, CheckCircle2 } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { UploadZone } from './UploadZone';
 import { useAppStore } from '../store/useAppStore';
@@ -7,6 +7,7 @@ import { streamChat, getDocuments, getSessions } from '../api/client';
 
 export function ChatPanel() {
   const [input, setInput] = useState('');
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const {
     messages, currentSessionId, isStreaming,
@@ -18,7 +19,10 @@ export function ChatPanel() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleUploadComplete = useCallback(async () => {
+  const handleUploadComplete = useCallback(async (fileCount: number) => {
+    setUploadSuccess(`${fileCount} file${fileCount !== 1 ? 's' : ''} uploaded successfully`);
+    setTimeout(() => setUploadSuccess(null), 4000);
+
     if (!currentSessionId) return;
     const [docs, sessions] = await Promise.all([
       getDocuments(currentSessionId),
@@ -57,6 +61,14 @@ export function ChatPanel() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Upload success banner */}
+      {uploadSuccess && (
+        <div className="mx-4 mt-4 flex items-center gap-2 rounded-lg bg-green-50 border border-green-300 px-4 py-3 text-green-700">
+          <CheckCircle2 size={20} />
+          <span className="text-sm font-medium">{uploadSuccess}</span>
+        </div>
+      )}
+
       {/* Message list */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {!hasSession && (
