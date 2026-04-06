@@ -1,14 +1,82 @@
 [
   {
-    "question": "What is gradient descent?",
-    "ground_truth": "Gradient descent is an optimization algorithm that minimizes a loss function by iteratively moving in the direction of steepest descent as defined by the negative of the gradient."
+    "question": "What are the three principles of cell theory and who developed it?",
+    "ground_truth": "The three principles of cell theory are: (1) all living things are made of cells, (2) the cell is the basic unit of life, and (3) all cells arise from pre-existing cells. The theory was developed by Schleiden, Schwann, and Virchow in the 19th century."
   },
   {
-    "question": "What is the difference between supervised and unsupervised learning?",
-    "ground_truth": "Supervised learning uses labeled training data where the algorithm learns to map inputs to outputs. Unsupervised learning finds hidden patterns in unlabeled data without predefined outputs."
+    "question": "What is the primary function of mitochondria?",
+    "ground_truth": "Mitochondria produce ATP through cellular respiration via oxidative phosphorylation. They are often called the powerhouse of the cell."
   },
   {
-    "question": "What is backpropagation?",
-    "ground_truth": "Backpropagation is an algorithm for training neural networks by computing the gradient of the loss function with respect to each weight using the chain rule of calculus, then updating weights via gradient descent."
+    "question": "How does DNA storage differ between prokaryotic and eukaryotic cells?",
+    "ground_truth": "Prokaryotic cells have circular DNA located in the cytoplasm with no membrane-bound nucleus. Eukaryotic cells have linear DNA enclosed within a membrane-bound nucleus."
+  },
+  {
+    "question": "What is the typical size range of prokaryotic cells compared to eukaryotic cells?",
+    "ground_truth": "Prokaryotic cells are typically 1–10 µm in size, while eukaryotic cells are typically 10–100 µm."
+  },
+  {
+    "question": "What is the function of the Golgi apparatus?",
+    "ground_truth": "The Golgi apparatus acts as the cell's post office, modifying, packaging, and shipping proteins and lipids to their final destinations."
+  },
+  {
+    "question": "State Newton's Second Law of Motion and give its formula.",
+    "ground_truth": "Newton's Second Law states that the acceleration of an object is directly proportional to the net force applied and inversely proportional to its mass. The formula is F = ma, where F is force in Newtons, m is mass in kilograms, and a is acceleration in m/s²."
+  },
+  {
+    "question": "What does Newton's Third Law of Motion state?",
+    "ground_truth": "Newton's Third Law states that for every action there is an equal and opposite reaction, expressed as F₁₂ = −F₂₁."
+  },
+  {
+    "question": "What is the formula for gravitational potential energy?",
+    "ground_truth": "Gravitational potential energy is calculated as PE = mgh, where m is mass in kilograms, g is gravitational acceleration (approximately 9.8 m/s² on Earth), and h is height above a reference point in meters. The unit is joules."
+  },
+  {
+    "question": "What is the value of the universal gravitational constant G?",
+    "ground_truth": "The universal gravitational constant G = 6.674 × 10⁻¹¹ N·m²/kg². It appears in Newton's Law of Universal Gravitation: F = G(m₁m₂)/r²."
+  },
+  {
+    "question": "What event triggered World War I and when did it occur?",
+    "ground_truth": "World War I was triggered by the assassination of Archduke Franz Ferdinand of Austria-Hungary in Sarajevo on June 28, 1914, which set off a chain of alliances leading to a full-scale European war beginning July 28, 1914."
+  },
+  {
+    "question": "What were the key terms of the Treaty of Versailles?",
+    "ground_truth": "The Treaty of Versailles (1919) formally ended World War I by imposing heavy reparations on Germany, redrawing European borders, and establishing the League of Nations as a precursor to the United Nations."
+  },
+  {
+    "question": "What was the New Deal and who introduced it?",
+    "ground_truth": "The New Deal was a series of economic reforms introduced by U.S. President Franklin D. Roosevelt between 1933 and 1939 in response to the Great Depression. It included the creation of the Social Security Administration and major public works programs."
+  },
+  {
+    "question": "When did the Soviet Union dissolve and what did this event signify?",
+    "ground_truth": "The Soviet Union was officially dissolved on December 25, 1991. This marked the end of the Cold War — the decades-long geopolitical rivalry between the United States and NATO on one side and the USSR and the Warsaw Pact on the other."
+  },
+  {
+    "question": "What is the average-case time complexity of Quick Sort and what is its worst case?",
+    "ground_truth": "Quick Sort has an average-case time complexity of O(n log n). In the worst case, such as with already-sorted data and a bad pivot, it degrades to O(n²). It is widely used in practice due to its in-place sorting and good cache performance."
+  },
+  {
+    "question": "What is the difference between a stack and a queue?",
+    "ground_truth": "A stack follows LIFO (Last In, First Out) order where the last element added is the first removed. A queue follows FIFO (First In, First Out) order where the first element added is the first removed. Stacks are used in recursion and undo operations; queues are used in task scheduling and BFS."
+  },
+  {
+    "question": "What ports do HTTP and HTTPS use, and at which OSI layer do they operate?",
+    "ground_truth": "HTTP uses port 80 and HTTPS uses port 443. Both operate at the Application layer of the OSI model. HTTPS encrypts data using TLS/SSL."
+  },
+  {
+    "question": "What is the average-case time complexity for search in a hash table?",
+    "ground_truth": "The average-case time complexity for search in a hash table is O(1)."
+  },
+  {
+    "question": "What is the equilibrium price in a market?",
+    "ground_truth": "The equilibrium price is the price at which quantity supplied equals quantity demanded — the intersection of the supply and demand curves. At this price there is no surplus or shortage in the market."
+  },
+  {
+    "question": "What are the four main market structures and how do they differ in number of sellers?",
+    "ground_truth": "The four main market structures are: Perfect Competition (many sellers), Monopolistic Competition (many sellers), Oligopoly (few sellers), and Monopoly (one seller). They differ in product type, barriers to entry, and degree of price control."
+  },
+  {
+    "question": "What is the difference between nominal GDP and real GDP?",
+    "ground_truth": "Nominal GDP is measured at current prices, while real GDP adjusts for inflation by using prices from a base year. Real GDP is a more accurate measure of actual economic growth because it removes the effect of price level changes."
   }
 ]

@@ -5,12 +5,22 @@ Usage:
     python eval/evaluate.py --session_id <id>
 
 Requires:
-    pip install ragas datasets sseclient-py
+    pip install ragas langchain-openai
     Backend running at http://localhost:8000
 """
 import json
 import argparse
+import sys
 import requests
+from pathlib import Path
+from dotenv import load_dotenv
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BACKEND_DIR))
+
+# Load .env from backend root so Azure keys are available for RAGAS
+load_dotenv(BACKEND_DIR / ".env")
+
 
 def get_chat_response(session_id: str, question: str) -> dict:
     """Call POST /chat (SSE stream) and collect the full response."""
@@ -53,31 +63,54 @@ def main():
     args = parser.parse_args()
 
     try:
-        from datasets import Dataset
-        from ragas import evaluate
-        from ragas.metrics import answer_relevancy, context_precision, faithfulness
+        from ragas import evaluate, EvaluationDataset, SingleTurnSample
+        try:
+            from ragas.metrics.collections import Faithfulness, ResponseRelevancy, LLMContextPrecisionWithoutReference
+        except ImportError:
+            from ragas.metrics import Faithfulness, ResponseRelevancy, LLMContextPrecisionWithoutReference
+        from ragas.llms import LangchainLLMWrapper
+        from ragas.embeddings import LangchainEmbeddingsWrapper
+        from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
     except ImportError:
         print("ERROR: Install evaluation dependencies first:")
-        print("  pip install ragas datasets sseclient-py")
+        print("  pip install ragas langchain-openai")
         return
+
+    from app.config import settings
 
     with open(args.test_set) as f:
         test_set = json.load(f)
 
     print(f"Running evaluation on {len(test_set)} questions for session {args.session_id}...")
-    rows = []
+    samples = []
     for i, item in enumerate(test_set):
         print(f"  [{i+1}/{len(test_set)}] {item['question'][:60]}...")
         result = get_chat_response(args.session_id, item["question"])
-        rows.append({
-            "question": item["question"],
-            "answer": result["answer"],
-            "contexts": result["contexts"],
-            "ground_truth": item["ground_truth"],
-        })
+        samples.append(SingleTurnSample(
+            user_input=item["question"],
+            response=result["answer"],
+            retrieved_contexts=result["contexts"],
+            reference=item["ground_truth"],
+        ))
 
-    dataset = Dataset.from_list(rows)
-    result = evaluate(dataset, metrics=[answer_relevancy, context_precision, faithfulness])
+    dataset = EvaluationDataset(samples=samples)
+
+    llm = LangchainLLMWrapper(AzureChatOpenAI(
+        azure_endpoint=settings.chat_api_endpoint,
+        api_key=settings.chat_api_key,
+        azure_deployment=settings.chat_deployment,
+        api_version=settings.chat_api_version,
+    ))
+    embeddings = LangchainEmbeddingsWrapper(AzureOpenAIEmbeddings(
+        azure_endpoint=settings.embedding_api_endpoint,
+        api_key=settings.embedding_api_key,
+        azure_deployment=settings.embedding_deployment,
+        api_version=settings.embedding_api_version,
+    ))
+
+    metrics = [ResponseRelevancy(), LLMContextPrecisionWithoutReference(), Faithfulness()]
+    result = evaluate(dataset=dataset, metrics=metrics, llm=llm, embeddings=embeddings)
+
     print("\n=== RAGAS Results ===")
     print(result)
 
@@ -86,11 +119,18 @@ def main():
     print(f"\nSaved detailed results to {args.output}")
 
     print("\n=== Targets ===")
-    scores = result.scores if hasattr(result, 'scores') else {}
-    for metric, target in [("answer_relevancy", 0.80), ("context_precision", 0.75), ("faithfulness", 0.90)]:
-        score = scores.get(metric, "N/A")
-        status = "✅" if isinstance(score, float) and score >= target else "❌"
-        print(f"  {status} {metric}: {score} (target: >{target})")
+    targets = [
+        ("answer_relevancy", 0.80),
+        ("llm_context_precision_without_reference", 0.75),
+        ("faithfulness", 0.90),
+    ]
+    for metric, target in targets:
+        score = result.get(metric, "N/A") if hasattr(result, 'get') else "N/A"
+        if isinstance(score, (int, float)):
+            status = "✅" if score >= target else "❌"
+            print(f"  {status} {metric}: {score:.4f} (target: >{target})")
+        else:
+            print(f"  ❌ {metric}: {score} (target: >{target})")
 
 
 if __name__ == "__main__":

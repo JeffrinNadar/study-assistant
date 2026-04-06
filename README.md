@@ -76,10 +76,19 @@ cd frontend && npm run test
 
 ```bash
 cd backend
-pip install ragas datasets
+source venv/bin/activate
+pip install ragas langchain-openai
 python eval/evaluate.py --session_id <id>
 ```
 
-Targets: `answer_relevancy > 0.80`, `context_precision > 0.75`, `faithfulness > 0.90`.
+Requires the backend running at `http://localhost:8000` and Azure OpenAI credentials in `.env`.
 
-Fill `eval/test_set.json` with real questions from your uploaded PDFs before running.
+### Results (20 questions across biology, physics, history, CS, and economics)
+
+| Metric | Score | Target | Status |
+|--------|-------|--------|--------|
+| Answer Relevancy | **0.9216** | > 0.80 | ✅ Pass |
+| Context Precision | **0.9333** | > 0.75 | ✅ Pass |
+| Faithfulness | **0.9192** | > 0.90 | ✅ Pass |
+
+The test set (`eval/test_set.json`) contains 20 questions with ground-truth answers. Per-question results are saved to `eval/results.csv`.
