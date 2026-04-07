@@ -10,9 +10,12 @@ import pathlib
 from app.database import get_db
 from app.config import settings
 from app.models.chunk import Chunk
+from app.models.session import Session
+from app.models.user import User
 from app.services.embedder import embed_texts
 from app.services.vector_store import VectorStore
 from app.services.llm import stream_answer
+from app.services.auth import get_current_user
 
 router = APIRouter()
 
@@ -24,7 +27,12 @@ class ChatRequest(BaseModel):
     history: List[dict] = []
 
 @router.post("/chat")
-async def chat(request: ChatRequest, db: DBSession = Depends(get_db)):
+async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Verify session belongs to current user
+    session = db.get(Session, request.session_id)
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
     index_path = (pathlib.Path(settings.faiss_index_dir) / f"{request.session_id}.index").resolve()
     allowed = pathlib.Path(settings.faiss_index_dir).resolve()
     if not str(index_path).startswith(str(allowed)):

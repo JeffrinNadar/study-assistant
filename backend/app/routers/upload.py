@@ -11,6 +11,8 @@ from app.services.pdf_parser import parse_pdf
 from app.services.chunker import chunk_pages
 from app.services.embedder import embed_texts
 from app.services.vector_store import VectorStore
+from app.models.user import User
+from app.services.auth import get_current_user
 
 router = APIRouter()
 
@@ -22,6 +24,7 @@ async def upload(
     files: List[UploadFile] = File(...),
     session_id: Optional[str] = Form(None),
     db: DBSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if len(files) > MAX_FILES:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_FILES} files per upload")
@@ -38,13 +41,13 @@ async def upload(
         file_contents[upload_file.filename] = content
         await upload_file.seek(0)  # reset for later reading
 
-    # Create or fetch session
+    # Create or fetch session (scoped to current user)
     if session_id:
         session = db.get(Session, session_id)
-        if not session:
+        if not session or session.user_id != current_user.id:
             raise HTTPException(status_code=404, detail="Session not found")
     else:
-        session = Session(name="New Session")
+        session = Session(name="New Session", user_id=current_user.id)
         db.add(session)
         db.commit()
         db.refresh(session)

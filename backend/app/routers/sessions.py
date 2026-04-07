@@ -7,13 +7,15 @@ from app.models.session import Session
 from app.models.document import Document
 from app.models.chunk import Chunk
 from app.config import settings
+from app.models.user import User
+from app.services.auth import get_current_user
 
 router = APIRouter()
 
 
 @router.get("/sessions")
-def list_sessions(db: DBSession = Depends(get_db)):
-    sessions = db.exec(select(Session).order_by(Session.created_at.desc())).all()
+def list_sessions(db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    sessions = db.exec(select(Session).where(Session.user_id == current_user.id).order_by(Session.created_at.desc())).all()
     result = []
     for s in sessions:
         doc_count = len(db.exec(select(Document).where(Document.session_id == s.id)).all())
@@ -31,8 +33,8 @@ def list_sessions(db: DBSession = Depends(get_db)):
 
 
 @router.post("/sessions")
-def create_session(name: str, db: DBSession = Depends(get_db)):
-    session = Session(name=name)
+def create_session(name: str, db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    session = Session(name=name, user_id=current_user.id)
     db.add(session)
     db.commit()
     db.refresh(session)
@@ -40,9 +42,9 @@ def create_session(name: str, db: DBSession = Depends(get_db)):
 
 
 @router.delete("/sessions/{session_id}")
-def delete_session(session_id: str, db: DBSession = Depends(get_db)):
+def delete_session(session_id: str, db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     session = db.get(Session, session_id)
-    if not session:
+    if not session or session.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Session not found")
     _delete_session_data(session_id, db)
     return {"success": True}

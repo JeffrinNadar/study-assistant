@@ -1,22 +1,17 @@
 import pytest
 import json
-from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 import numpy as np
 import fitz
 import io
-from app.main import app
 
-@pytest.fixture
-def client():
-    return TestClient(app)
 
 def mock_embed(texts):
-    vecs = np.random.randn(len(texts), 1536).astype(np.float32)
+    vecs = np.random.randn(len(texts), 3072).astype(np.float32)
     norms = np.linalg.norm(vecs, axis=1, keepdims=True)
     return vecs / norms
 
-def test_chat_returns_sse_stream(client):
+def test_chat_returns_sse_stream(client, auth_headers):
     """Integration test: mock embed + LLM, verify SSE event format."""
     # First, upload a PDF to get a session
     doc = fitz.open()
@@ -30,6 +25,7 @@ def test_chat_returns_sse_stream(client):
         upload_resp = client.post(
             "/upload",
             files=[("files", ("notes.pdf", pdf_bytes, "application/pdf"))],
+            headers=auth_headers,
         )
     session_id = upload_resp.json()["session_id"]
 
@@ -40,7 +36,7 @@ def test_chat_returns_sse_stream(client):
         resp = client.post(
             "/chat",
             json={"session_id": session_id, "question": "What is gradient descent?", "history": []},
-            headers={"Accept": "text/event-stream"},
+            headers={**auth_headers, "Accept": "text/event-stream"},
         )
 
     assert resp.status_code == 200
@@ -49,3 +45,10 @@ def test_chat_returns_sse_stream(client):
     assert "event: token" in body
     assert "event: citations" in body
     assert "event: done" in body
+
+def test_chat_requires_auth(client):
+    resp = client.post(
+        "/chat",
+        json={"session_id": "fake", "question": "test", "history": []},
+    )
+    assert resp.status_code == 401

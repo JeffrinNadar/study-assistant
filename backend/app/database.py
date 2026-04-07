@@ -3,6 +3,7 @@ from app.config import settings
 from app.models.chunk import Chunk       # noqa: F401 — registers table
 from app.models.document import Document  # noqa: F401
 from app.models.session import Session    # noqa: F401
+from app.models.user import User          # noqa: F401
 
 engine = create_engine(settings.database_url, connect_args={"check_same_thread": False})
 

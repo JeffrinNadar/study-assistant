@@ -5,6 +5,7 @@ from app.routers.upload import router as upload_router
 from app.routers.chat import router as chat_router
 from app.routers.sessions import router as sessions_router
 from app.routers.documents import router as documents_router
+from app.routers.auth import router as auth_router
 
 app = FastAPI(title="RAG Study Assistant")
 
@@ -22,6 +23,7 @@ app.add_middleware(
 def on_startup():
     create_db()
 
+app.include_router(auth_router)
 app.include_router(upload_router)
 app.include_router(chat_router)
 app.include_router(sessions_router)

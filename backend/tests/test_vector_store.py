@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from app.services.vector_store import VectorStore
 
-def normalized_vectors(n: int, dim: int = 1536) -> np.ndarray:
+def normalized_vectors(n: int, dim: int = 3072) -> np.ndarray:
     vecs = np.random.randn(n, dim).astype(np.float32)
     norms = np.linalg.norm(vecs, axis=1, keepdims=True)
     return vecs / norms
