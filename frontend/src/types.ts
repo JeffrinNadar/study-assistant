@@ -34,6 +34,13 @@ export interface UploadResponse {
   total_chunks: number;
 }
 
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user_id: string;
+  email: string;
+}
+
 export type SSEEvent =
   | { event: 'token'; data: { content: string } }
   | { event: 'citations'; data: { citations: Citation[]; low_confidence: boolean } }

@@ -1,10 +1,17 @@
 import { useEffect } from 'react';
-import { Trash2, BookOpen } from 'lucide-react';
-import { getSessions, getDocuments, deleteDocument, deleteSession } from '../api/client';
+import { Trash2, BookOpen, LogOut } from 'lucide-react';
+import { getSessions, getDocuments, deleteDocument, deleteSession, logout } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
+import { useAuthStore } from '../store/useAuthStore';
 
 export function Sidebar() {
   const { sessions, currentSessionId, documents, setSessions, setCurrentSessionId, setDocuments, removeDocument, removeSession } = useAppStore();
+  const { email, clearAuth } = useAuthStore();
+
+  const handleLogout = () => {
+    logout();
+    clearAuth();
+  };
 
   useEffect(() => {
     getSessions().then(setSessions).catch(() => {});
@@ -78,6 +85,14 @@ export function Sidebar() {
             ))}
           </div>
         )}
+      </div>
+
+      {/* User / Logout */}
+      <div className="border-t border-gray-200 p-3 flex items-center justify-between">
+        <span className="text-xs text-gray-500 truncate">{email}</span>
+        <button onClick={handleLogout} className="text-gray-400 hover:text-red-500" title="Log out">
+          <LogOut size={16} />
+        </button>
       </div>
     </div>
   );

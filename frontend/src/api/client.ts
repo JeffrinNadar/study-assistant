@@ -1,9 +1,33 @@
 import axios from 'axios';
-import type { Session, Document, UploadResponse, Citation } from '../types';
+import type { Session, Document, UploadResponse, Citation, AuthResponse } from '../types';
 
 const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 export const api = axios.create({ baseURL: BASE });
+
+// Attach JWT token to every request
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access_token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export async function signup(email: string, password: string): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>('/auth/signup', { email, password });
+  localStorage.setItem('access_token', data.access_token);
+  return data;
+}
+
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  const { data } = await api.post<AuthResponse>('/auth/login', { email, password });
+  localStorage.setItem('access_token', data.access_token);
+  return data;
+}
+
+export function logout(): void {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('user_email');
+}
 
 export async function uploadFiles(
   files: File[],
@@ -53,9 +77,14 @@ export function streamChat(
 
   (async () => {
     try {
+      const token = localStorage.getItem('access_token');
       const resp = await fetch(`${BASE}/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ session_id: sessionId, question, history }),
         signal: controller.signal,
       });
