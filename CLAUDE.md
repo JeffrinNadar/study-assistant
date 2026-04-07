@@ -14,7 +14,7 @@ cd backend
 source venv/bin/activate          # activate virtualenv (created with python3.11 -m venv venv)
 pip install -r requirements.txt
 uvicorn app.main:app --reload     # dev server on port 8000
-pytest                            # all 19 tests
+pytest                            # all 21 tests
 pytest tests/test_chat.py -v      # single test file
 ```
 
@@ -29,7 +29,7 @@ npm run test     # vitest
 
 ## Architecture
 
-Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The backend owns **all** AI logic; the frontend is a pure UI layer with no direct LLM or embedding access.
+Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The backend owns **all** AI logic; the frontend is a pure UI layer with no direct LLM or embedding access. All endpoints (except `/ping` and `/auth/*`) require JWT authentication; sessions and documents are scoped per user.
 
 ### Document Ingestion Pipeline (`POST /upload`)
 1. FastAPI saves PDF to `uploads/{session_id}/{filename}` on disk
@@ -60,6 +60,10 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The
 - **Session auto-prune**: `GET /sessions` automatically deletes sessions with 0 documents (e.g., after indices are manually cleared). `DELETE /sessions/{id}` removes all associated data including chunks, documents, FAISS index, and uploaded files.
 - **Upload success banner**: The success notification lives in `ChatPanel` (not `UploadZone`) because `UploadZone` unmounts when a new session is created on first upload.
 - **SSE error detail forwarding**: The frontend `streamChat` reads the JSON response body on non-OK responses to surface backend error messages (e.g., "No documents in this session") instead of raw status codes.
+- **JWT authentication**: All API endpoints (except `/ping` and `/auth/*`) require a Bearer token. Tokens are issued on signup/login with a 24-hour expiry (configurable via `JWT_EXPIRY_MINUTES`). The `get_current_user` FastAPI dependency decodes the JWT and fetches the User from SQLite.
+- **Per-user session scoping**: `Session` has a `user_id` field. All CRUD operations verify `session.user_id == current_user.id` to prevent cross-user data access. Upload creates sessions with the current user's ID.
+- **bcrypt directly (not passlib)**: `passlib[bcrypt]` 1.7.4 is incompatible with `bcrypt>=5.0`. The auth service uses `bcrypt==4.0.1` directly for password hashing/verification.
+- **Frontend auth gate**: `App.tsx` checks `useAuthStore.isAuthenticated` — renders `AuthPage` (login/signup form) when not authenticated, main app when authenticated. JWT stored in `localStorage`.
 
 ## Backend Layout
 
@@ -70,21 +74,24 @@ backend/
 │   ├── config.py            # pydantic-settings; absolute paths via Path(__file__).resolve()
 │   ├── database.py          # SQLite engine, create_db(), get_db() dependency
 │   ├── routers/
-│   │   ├── upload.py        # POST /upload — full ingestion pipeline
-│   │   ├── chat.py          # POST /chat — SSE streaming with FAISS retrieval
-│   │   ├── sessions.py      # GET/POST/DELETE /sessions; auto-prunes empty sessions
-│   │   └── documents.py     # GET /documents, DELETE /documents/{id}; cleans up empty FAISS index
+│   │   ├── auth.py          # POST /auth/signup, POST /auth/login — JWT authentication
+│   │   ├── upload.py        # POST /upload — full ingestion pipeline (auth required)
+│   │   ├── chat.py          # POST /chat — SSE streaming with FAISS retrieval (auth required)
+│   │   ├── sessions.py      # GET/POST/DELETE /sessions; auto-prunes empty sessions (auth required)
+│   │   └── documents.py     # GET /documents, DELETE /documents/{id}; cleans up empty FAISS index (auth required)
 │   ├── services/
+│   │   ├── auth.py          # hash_password, verify_password, create_access_token, get_current_user dependency
 │   │   ├── pdf_parser.py    # parse_pdf() → List[ParsedPage]
 │   │   ├── chunker.py       # chunk_pages() → List[TextChunk]
 │   │   ├── embedder.py      # embed_texts() → np.ndarray (N, 1536), L2-normalized
 │   │   ├── vector_store.py  # VectorStore: add_vectors, search, remove_by_ids, save, load
 │   │   └── llm.py           # stream_answer() → Generator[str]; GPT-4o-mini + prompt builder
 │   └── models/
+│       ├── user.py          # User(id, email, hashed_password, created_at)
 │       ├── chunk.py         # Chunk(id, session_id, doc_id, file_name, page_num, chunk_index, text, faiss_id)
 │       ├── document.py      # Document(id, session_id, file_name, pages, chunks)
-│       └── session.py       # Session(id, name, created_at)
-├── tests/                   # 19 tests; all OpenAI calls mocked with unittest.mock
+│       └── session.py       # Session(id, user_id, name, created_at)
+├── tests/                   # 21 tests; all OpenAI calls mocked with unittest.mock
 ├── eval/
 │   ├── evaluate.py          # RAGAS evaluation script (pip install ragas datasets)
 │   └── test_set.json        # 3 placeholder Q&A pairs — replace with real questions
@@ -100,13 +107,17 @@ backend/
 
 ```
 frontend/src/
-├── types.ts                 # Session, Document, Citation, Message, UploadResponse, SSEEvent
-├── api/client.ts            # Axios instance; uploadFiles, getSessions, getDocuments,
-│                            # deleteDocument, deleteSession, streamChat (fetch + AbortController)
-├── store/useAppStore.ts     # Zustand: sessions, messages, streaming state + actions
+├── types.ts                 # Session, Document, Citation, Message, UploadResponse, AuthResponse, SSEEvent
+├── api/client.ts            # Axios instance + JWT interceptor; signup, login, logout,
+│                            # uploadFiles, getSessions, getDocuments, deleteDocument,
+│                            # deleteSession, streamChat (fetch + AbortController + auth header)
+├── store/
+│   ├── useAppStore.ts       # Zustand: sessions, messages, streaming state + actions
+│   └── useAuthStore.ts      # Zustand: token, email, isAuthenticated, setAuth, clearAuth
 └── components/
-    ├── App.tsx              # Two-column layout: <Sidebar> + <ChatPanel>
-    ├── Sidebar.tsx          # Session list + document list with delete buttons; loads on mount
+    ├── App.tsx              # Auth gate: shows AuthPage or main layout (Sidebar + ChatPanel)
+    ├── AuthPage.tsx         # Login/signup form with email + password; toggles between modes
+    ├── Sidebar.tsx          # Session list + document list + user email + logout button
     ├── ChatPanel.tsx        # Message list, upload success banner, UploadZone, input bar + send
     ├── MessageBubble.tsx    # User/assistant bubbles; markdown; streaming cursor ▍;
     │                        # low-confidence amber warning; CitationCard list
@@ -115,6 +126,21 @@ frontend/src/
 ```
 
 ## API Reference
+
+All endpoints below (except `/ping` and `/auth/*`) require `Authorization: Bearer <token>` header.
+
+### `POST /auth/signup`
+```json
+{ "email": "user@example.com", "password": "secret" }
+```
+Returns `{ "access_token": "jwt...", "token_type": "bearer", "user_id": "uuid", "email": "user@example.com" }`.
+409 if email already registered.
+
+### `POST /auth/login`
+```json
+{ "email": "user@example.com", "password": "secret" }
+```
+Returns same shape as signup. 401 if invalid credentials.
 
 ### `POST /upload`
 ```
@@ -159,12 +185,16 @@ Returns `{ "success": true, "chunks_removed": N }`.
 
 Copy `backend/.env.example` → `backend/.env`:
 ```
-OPENAI_API_KEY=sk-...
+CHAT_API_KEY=...                                   # Azure OpenAI chat API key
+CHAT_API_ENDPOINT=https://...openai.azure.com/     # Azure OpenAI chat endpoint
+EMBEDDING_API_KEY=...                              # Azure OpenAI embedding API key
+EMBEDDING_API_ENDPOINT=https://...openai.azure.com/ # Azure OpenAI embedding endpoint
+JWT_SECRET=change-me-to-a-random-secret            # required for production
 DATABASE_URL=sqlite:///./data/study_assistant.db   # resolved to absolute path at runtime
 FAISS_INDEX_DIR=./data/faiss_indices               # resolved to absolute path at runtime
 UPLOAD_DIR=./uploads                               # resolved to absolute path at runtime
 ```
-`openai_api_key` defaults to `""` so tests can import config without a real key set.
+`jwt_secret` defaults to `"dev-secret-change-in-production"` for local dev/testing. API keys default to `""` so tests can import config without real keys set.
 
 ## Tech Stack
 
@@ -180,6 +210,8 @@ UPLOAD_DIR=./uploads                               # resolved to absolute path a
 | sqlmodel | 0.0.19 |
 | pydantic-settings | 2.2.1 |
 | numpy | 1.26.4 |
+| python-jose[cryptography] | 3.3.0 |
+| bcrypt | 4.0.1 |
 | sse-starlette | 2.1.0 |
 
 ### Frontend (latest at scaffold time)
@@ -202,7 +234,8 @@ UPLOAD_DIR=./uploads                               # resolved to absolute path a
 ```bash
 # railway.json and Dockerfile are in backend/
 # Set env vars in Railway dashboard:
-#   OPENAI_API_KEY, DATABASE_URL, FAISS_INDEX_DIR, UPLOAD_DIR
+#   CHAT_API_KEY, CHAT_API_ENDPOINT, EMBEDDING_API_KEY, EMBEDDING_API_ENDPOINT,
+#   JWT_SECRET, DATABASE_URL, FAISS_INDEX_DIR, UPLOAD_DIR
 ```
 
 **Frontend → Vercel**
@@ -225,3 +258,4 @@ python eval/evaluate.py --session_id <id>
 ```
 
 Fill `eval/test_set.json` with 20 real questions from your uploaded PDFs before running.
+11
