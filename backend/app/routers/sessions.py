@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,6 +7,7 @@ from app.database import get_db
 from app.models.session import Session
 from app.models.document import Document
 from app.models.chunk import Chunk
+from app.models.chat_message import ChatMessage
 from app.config import settings
 from app.models.user import User
 from app.services.auth import get_current_user
@@ -50,8 +52,34 @@ def delete_session(session_id: str, db: DBSession = Depends(get_db), current_use
     return {"success": True}
 
 
+@router.get("/messages")
+def list_messages(session_id: str, db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    session = db.get(Session, session_id)
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    messages = db.exec(
+        select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at)
+    ).all()
+    return [
+        {
+            "id": m.id,
+            "role": m.role,
+            "content": m.content,
+            "citations": json.loads(m.citations) if m.citations else None,
+            "low_confidence": m.low_confidence,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in messages
+    ]
+
+
 def _delete_session_data(session_id: str, db: DBSession):
     """Remove all data associated with a session: chunks, documents, FAISS index, uploads, and the session row."""
+    # Delete chat messages
+    chat_messages = db.exec(select(ChatMessage).where(ChatMessage.session_id == session_id)).all()
+    for m in chat_messages:
+        db.delete(m)
+
     # Delete chunks
     chunks = db.exec(select(Chunk).where(Chunk.session_id == session_id)).all()
     for c in chunks:

@@ -52,3 +52,25 @@ def test_chat_requires_auth(client):
         json={"session_id": "fake", "question": "test", "history": []},
     )
     assert resp.status_code == 401
+
+def test_get_messages_returns_empty_for_new_session(client, auth_headers):
+    """GET /messages returns empty list for a session with no messages."""
+    import fitz, io
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Test content. " * 50)
+    buf = io.BytesIO()
+    doc.save(buf)
+    pdf_bytes = buf.getvalue()
+
+    with patch("app.routers.upload.embed_texts", side_effect=mock_embed):
+        upload_resp = client.post(
+            "/upload",
+            files=[("files", ("test.pdf", pdf_bytes, "application/pdf"))],
+            headers=auth_headers,
+        )
+    session_id = upload_resp.json()["session_id"]
+
+    resp = client.get(f"/messages?session_id={session_id}", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
