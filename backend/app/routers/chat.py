@@ -7,7 +7,7 @@ import json
 import os
 import pathlib
 
-from app.database import get_db
+from app.database import get_db, engine
 from app.config import settings
 from app.models.chunk import Chunk
 from app.models.session import Session
@@ -16,6 +16,7 @@ from app.services.embedder import embed_texts
 from app.services.vector_store import VectorStore
 from app.services.llm import stream_answer
 from app.services.auth import get_current_user
+from app.models.chat_message import ChatMessage
 
 router = APIRouter()
 
@@ -24,7 +25,6 @@ LOW_CONFIDENCE_THRESHOLD = 0.70
 class ChatRequest(BaseModel):
     session_id: str
     question: str
-    history: List[dict] = []
 
 @router.post("/chat")
 async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -61,23 +61,49 @@ async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_us
     top_score = scores[0] if scores else 0.0
     low_confidence = top_score < LOW_CONFIDENCE_THRESHOLD
 
-    # Cap history to last 10 turns
-    history = request.history[-10:]
+    # Eagerly extract chunk data as plain dicts to avoid detached-instance errors in generator
+    chunk_dicts = [
+        {"file": c.file_name, "page": c.page_num, "text": c.text, "score": id_to_score.get(c.id, 0)}
+        for c in chunks
+    ]
+
+    # Save user message
+    user_msg = ChatMessage(session_id=request.session_id, role="user", content=request.question)
+    db.add(user_msg)
+    db.commit()
+
+    # Load history from DB (last 10 messages before the one we just saved)
+    history_rows = db.exec(
+        select(ChatMessage)
+        .where(ChatMessage.session_id == request.session_id)
+        .order_by(ChatMessage.created_at)
+    ).all()
+    history = [{"role": m.role, "content": m.content} for m in history_rows[-11:-1]]
+
+    session_id = request.session_id
+    question = request.question
 
     def event_stream():
         try:
-            # Stream tokens
-            for token in stream_answer(request.question, chunks, history):
+            full_response = []
+            for token in stream_answer(question, chunk_dicts, history):
+                full_response.append(token)
                 yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
 
-            # Emit citations event
-            citations = [
-                {"file": c.file_name, "page": c.page_num, "text": c.text, "score": id_to_score.get(c.id, 0)}
-                for c in chunks
-            ]
-            yield f"event: citations\ndata: {json.dumps({'citations': citations, 'low_confidence': low_confidence})}\n\n"
+            yield f"event: citations\ndata: {json.dumps({'citations': chunk_dicts, 'low_confidence': low_confidence})}\n\n"
 
-            # Done
+            # Save assistant message using a fresh DB session
+            with DBSession(engine) as save_db:
+                assistant_msg = ChatMessage(
+                    session_id=session_id,
+                    role="assistant",
+                    content="".join(full_response),
+                    citations=json.dumps(chunk_dicts),
+                    low_confidence=low_confidence,
+                )
+                save_db.add(assistant_msg)
+                save_db.commit()
+
             yield f"event: done\ndata: {json.dumps({})}\n\n"
         except Exception as exc:
             yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"

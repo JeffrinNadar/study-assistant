@@ -1,7 +1,6 @@
-from typing import Generator, List
+from typing import Generator, List, Union
 from openai import AzureOpenAI
 from app.config import settings
-from app.models.chunk import Chunk
 
 client = AzureOpenAI(
     api_key=settings.chat_api_key,
@@ -13,15 +12,23 @@ SYSTEM_PROMPT = """You are a study assistant. Answer the student's question usin
 If the answer is not in the context, respond: "I couldn't find this in your uploaded documents."
 Always cite sources inline: [Source: {filename}, p.{page}]"""
 
-def build_context(chunks: List[Chunk]) -> str:
+def build_context(chunks: List[Union[dict, object]]) -> str:
     parts = []
     for chunk in chunks:
-        parts.append(f"{chunk.text} [Source: {chunk.file_name}, p.{chunk.page_num}]")
+        if isinstance(chunk, dict):
+            text = chunk["text"]
+            file_name = chunk["file"]
+            page_num = chunk["page"]
+        else:
+            text = chunk.text
+            file_name = chunk.file_name
+            page_num = chunk.page_num
+        parts.append(f"{text} [Source: {file_name}, p.{page_num}]")
     return "\n\n".join(parts)
 
 def stream_answer(
     question: str,
-    chunks: List[Chunk],
+    chunks: List[Union[dict, object]],
     history: List[dict],
 ) -> Generator[str, None, None]:
     """Yield GPT-4o-mini tokens. `history` is list of {role, content} dicts."""
