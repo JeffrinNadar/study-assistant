@@ -4,18 +4,20 @@ A RAG-powered study assistant where students upload PDFs and chat with them via 
 
 ## Tech Stack
 
-**Backend:** FastAPI · FAISS · SQLite (SQLModel) · OpenAI API · PyMuPDF · LangChain
+**Backend:** FastAPI · FAISS · SQLite (SQLModel) · Azure OpenAI · PyMuPDF · LangChain
 
 **Frontend:** React 19 · TypeScript · Vite · Tailwind CSS v4 · Zustand · react-markdown
 
 ## Architecture
 
-Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API).
+Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + Azure OpenAI). The backend owns **all** AI logic; the frontend is a pure UI layer. All endpoints (except `/ping` and `/auth/*`) require JWT authentication; sessions and documents are scoped per user.
 
-- **Document ingestion:** PDF → PyMuPDF text extraction → LangChain chunking (512 chars, 50 overlap) → OpenAI `text-embedding-3-small` embeddings → FAISS IndexFlatIP
-- **Chat pipeline:** Question embedding → FAISS cosine similarity search (top-5) → GPT-4o-mini streaming via SSE → citations with scores
-- **Session management:** Sessions auto-prune when they have no documents; full delete cascades to chunks, vectors, and uploaded files
-- **Upload confirmation:** Green success banner shown in the chat panel after successful PDF upload
+- **Document ingestion:** PDF → PyMuPDF text extraction → LangChain chunking (512 chars, 50 overlap) → Azure OpenAI `text-embedding-3-large` embeddings (3072-dim) → FAISS IndexFlatIP (cosine similarity on L2-normalized vectors)
+- **Chat pipeline:** Question embedding → FAISS cosine similarity search (top-5) → GPT-4.1 streaming via SSE → citations with scores → low-confidence warning when best score < 0.70
+- **Authentication:** JWT-based signup/login with bcrypt password hashing. 24-hour token expiry. All sessions and documents scoped per user.
+- **Session management:** Sessions auto-named from first chat question. Inline rename via sidebar. Auto-prune on list when 0 documents remain. Full delete cascades to chunks, vectors, chat messages, and uploaded files.
+- **Chat history:** Messages persisted in SQLite. Backend loads last 10 turns for LLM context. Frontend loads history from DB on session select.
+- **Mid-chat upload:** Paperclip button in the chat input bar allows uploading additional PDFs without leaving the conversation.
 
 ## Getting Started
 
@@ -23,7 +25,7 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API).
 
 ```bash
 cd backend
-cp .env.example .env          # add your OPENAI_API_KEY
+cp .env.example .env          # add your Azure OpenAI credentials and JWT secret
 python3.11 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -41,7 +43,18 @@ npm run dev                    # http://localhost:5173
 ## Environment Variables
 
 ```
-OPENAI_API_KEY=sk-...
+# Azure OpenAI — Chat (GPT-4.1)
+CHAT_API_KEY=...
+CHAT_API_ENDPOINT=https://...openai.azure.com/
+
+# Azure OpenAI — Embeddings (text-embedding-3-large)
+EMBEDDING_API_KEY=...
+EMBEDDING_API_ENDPOINT=https://...openai.azure.com/
+
+# JWT Authentication
+JWT_SECRET=change-me-to-a-random-secret
+
+# Storage (resolved to absolute paths at runtime)
 DATABASE_URL=sqlite:///./data/study_assistant.db
 FAISS_INDEX_DIR=./data/faiss_indices
 UPLOAD_DIR=./uploads
@@ -51,25 +64,29 @@ UPLOAD_DIR=./uploads
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| `POST` | `/auth/signup` | Register with email + password; returns JWT |
+| `POST` | `/auth/login` | Authenticate; returns JWT |
 | `POST` | `/upload` | Upload PDFs (max 5, 20 MB each); returns chunk counts |
 | `POST` | `/chat` | SSE streaming chat with citations |
 | `GET` | `/sessions` | List sessions (auto-prunes empty sessions) |
+| `PATCH` | `/sessions/{id}` | Rename a session |
 | `DELETE` | `/sessions/{id}` | Delete session and all associated data |
 | `GET` | `/documents` | List documents for a session |
 | `DELETE` | `/documents/{id}` | Remove document and its vectors |
+| `GET` | `/messages` | Get persisted chat messages for a session |
 
 Chat responses stream as SSE: `token` → `citations` → `done` (or `error`).
 
 ## Testing
 
 ```bash
-cd backend && pytest            # 19 tests (OpenAI calls mocked)
-cd frontend && npm run test
+cd backend && pytest            # 23 tests (Azure OpenAI calls mocked)
+cd frontend && npm run test     # vitest
 ```
 
 ## Deployment
 
-- **Backend → Railway:** `railway.json` and `Dockerfile` included in `backend/`
+- **Backend → Railway:** `railway.json` and `Dockerfile` included in `backend/`. Set `CHAT_API_KEY`, `CHAT_API_ENDPOINT`, `EMBEDDING_API_KEY`, `EMBEDDING_API_ENDPOINT`, `JWT_SECRET`, `DATABASE_URL`, `FAISS_INDEX_DIR`, `UPLOAD_DIR` in Railway dashboard.
 - **Frontend → Vercel:** set `VITE_API_URL` to your Railway domain; update `allow_origins` in `backend/app/main.py`
 
 ## Evaluation (RAGAS)
@@ -87,8 +104,8 @@ Requires the backend running at `http://localhost:8000` and Azure OpenAI credent
 
 | Metric | Score | Target | Status |
 |--------|-------|--------|--------|
-| Answer Relevancy | **0.9216** | > 0.80 | ✅ Pass |
-| Context Precision | **0.9333** | > 0.75 | ✅ Pass |
-| Faithfulness | **0.9192** | > 0.90 | ✅ Pass |
+| Answer Relevancy | **0.9216** | > 0.80 | Pass |
+| Context Precision | **0.9333** | > 0.75 | Pass |
+| Faithfulness | **0.9192** | > 0.90 | Pass |
 
 The test set (`eval/test_set.json`) contains 20 questions with ground-truth answers. Per-question results are saved to `eval/results.csv`.
