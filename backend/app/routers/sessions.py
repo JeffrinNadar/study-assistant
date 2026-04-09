@@ -2,6 +2,7 @@ import json
 import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel import Session as DBSession, select
 from app.database import get_db
 from app.models.session import Session
@@ -41,6 +42,21 @@ def create_session(name: str, db: DBSession = Depends(get_db), current_user: Use
     db.commit()
     db.refresh(session)
     return {"id": session.id, "name": session.name, "created_at": session.created_at.isoformat(), "doc_count": 0}
+
+
+class RenameRequest(BaseModel):
+    name: str
+
+
+@router.patch("/sessions/{session_id}")
+def rename_session(session_id: str, body: RenameRequest, db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    session = db.get(Session, session_id)
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+    session.name = body.name[:100]  # cap at 100 chars
+    db.commit()
+    db.refresh(session)
+    return {"id": session.id, "name": session.name}
 
 
 @router.delete("/sessions/{session_id}")

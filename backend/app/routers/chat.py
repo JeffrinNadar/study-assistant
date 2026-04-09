@@ -67,6 +67,11 @@ async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_us
         for c in chunks
     ]
 
+    # Auto-name session from first user question
+    if session.name == "New Session":
+        session.name = request.question[:100]
+        db.add(session)
+
     # Save user message
     user_msg = ChatMessage(session_id=request.session_id, role="user", content=request.question)
     db.add(user_msg)
