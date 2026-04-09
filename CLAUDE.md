@@ -277,4 +277,3 @@ python eval/evaluate.py --session_id <id>
 ```
 
 Fill `eval/test_set.json` with 20 real questions from your uploaded PDFs before running.
-11
