@@ -18,7 +18,7 @@ pytest                            # 21 tests
 |------|---------|
 | `app/main.py` | FastAPI app, CORS (localhost:5173 + study-assistant.vercel.app), router registration, `create_db()` on startup, `GET /ping` |
 | `app/config.py` | `pydantic_settings.BaseSettings`, resolves paths to absolute via `BACKEND_DIR`. Azure OpenAI config for both chat and embeddings. Auto-creates runtime dirs on import |
-| `app/database.py` | SQLite engine (`check_same_thread=False`), `create_db()`, `get_db()` dependency. Imports all models (Chunk, Document, Session, User) to register tables |
+| `app/database.py` | SQLite engine (`check_same_thread=False`), `create_db()`, `get_db()` dependency. Imports all models (Chunk, Document, Session, User, ChatMessage) to register tables |
 
 ### Routers
 
@@ -28,8 +28,8 @@ All endpoints (except `/ping` and `/auth/*`) require `Authorization: Bearer <tok
 |--------|-----------|-------------|
 | `routers/auth.py` | `POST /auth/signup`, `POST /auth/login` | Accepts `{email, password}`. Returns `{access_token, token_type, user_id, email}`. Signup: 409 on duplicate email. Login: 401 on bad credentials |
 | `routers/upload.py` | `POST /upload` | Auth required. Accepts `files[]` + optional `session_id` (Form). Max 5 files, 20 MB each. Creates session with `user_id` if none. Verifies session ownership. Pipeline: save PDF -> parse -> chunk -> embed -> FAISS + SQLite |
-| `routers/chat.py` | `POST /chat` | Auth required. Body: `{session_id, question, history}`. Verifies session ownership. Path traversal guard. FAISS top-5 search. Low confidence if best score < 0.70. Returns SSE: token -> citations -> done (or error) |
-| `routers/sessions.py` | `GET /sessions`, `POST /sessions`, `DELETE /sessions/{id}` | Auth required. All operations scoped to `current_user.id`. GET auto-prunes sessions with 0 docs. DELETE verifies ownership, removes chunks, docs, FAISS index, uploaded files |
+| `routers/chat.py` | `POST /chat` | Auth required. Body: `{session_id, question}`. Verifies session ownership. Path traversal guard. FAISS top-5 search. Low confidence if best score < 0.70. Saves user message before streaming, saves assistant message after streaming (fresh DBSession inside generator). Loads last 10 messages from DB for LLM context. Returns SSE: token -> citations -> done (or error) |
+| `routers/sessions.py` | `GET /sessions`, `POST /sessions`, `DELETE /sessions/{id}`, `GET /messages` | Auth required. All operations scoped to `current_user.id`. GET auto-prunes sessions with 0 docs. DELETE verifies ownership, removes chunks, docs, chat messages, FAISS index, uploaded files. `GET /messages?session_id=` returns chat history ordered by `created_at` |
 | `routers/documents.py` | `GET /documents`, `DELETE /documents/{id}` | Auth required. GET requires `session_id` query param, verifies session ownership. DELETE verifies ownership via session, removes chunks + FAISS vectors; deletes index file if empty |
 
 ### Services
@@ -53,12 +53,14 @@ All endpoints (except `/ping` and `/auth/*`) require `Authorization: Bearer <tok
 
 **Chunk**: `id: int` (auto PK), `session_id: str` (indexed), `doc_id: int` (FK), `file_name: str`, `page_num: int`, `chunk_index: int`, `text: str`
 
-## Tests (21 total)
+**ChatMessage**: `id: int` (auto PK), `session_id: str` (indexed), `role: str` ("user"|"assistant"), `content: str`, `citations: str` (nullable, JSON), `low_confidence: bool` (default False), `created_at: datetime`
+
+## Tests (23 total)
 
 | File | Count | What's Tested |
 |------|-------|---------------|
 | `test_upload.py` | 3 | Upload creates session with auth, creates FAISS index, rejects unauthenticated requests (401) |
-| `test_chat.py` | 2 | SSE stream with tokens/citations (auth), rejects unauthenticated requests (401) |
+| `test_chat.py` | 4 | SSE stream with tokens/citations (auth), rejects unauthenticated (401), GET /messages returns empty for new session, chat persists user+assistant messages |
 | `test_pdf_parser.py` | 3 | Parse returns list, pages have text + page_num, page numbers sequential |
 | `test_chunker.py` | 4 | Produces multiple chunks, fields populated, index sequential per page, empty page produces none |
 | `test_embedder.py` | 4 | Returns ndarray, correct shape, vectors normalized, empty input raises |
@@ -66,7 +68,7 @@ All endpoints (except `/ping` and `/auth/*`) require `Authorization: Bearer <tok
 
 - All OpenAI calls mocked with `unittest.mock`
 - `conftest.py` provides: `sample_pdf_path` (real tiny PDF via PyMuPDF), `test_user` (creates User in DB with bcrypt-hashed password, cleaned up after test), `auth_headers` (valid JWT Bearer header for test_user), `client` (TestClient)
-- `conftest.py` calls `create_db()` at import time to ensure User table exists
+- `conftest.py` calls `create_db()` at import time to ensure all tables (including ChatMessage) exist
 - Test mock vectors use 3072 dimensions (matching `text-embedding-3-large`)
 
 ## Dependencies (pinned)

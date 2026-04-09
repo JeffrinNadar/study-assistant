@@ -51,7 +51,8 @@ Base URL from `VITE_API_URL` env var (defaults to `http://localhost:8000`).
 | `getDocuments(sessionId)` | GET | `/documents?session_id=` | Returns `Document[]` |
 | `deleteDocument(docId)` | DELETE | `/documents/{id}` | |
 | `deleteSession(sessionId)` | DELETE | `/sessions/{id}` | |
-| `streamChat(sessionId, question, history, handlers)` | POST | `/chat` | Raw `fetch` with `AbortController` for SSE. NOT Axios. Manually attaches Bearer token. Handlers: `onToken`, `onCitations`, `onDone`, `onError`. Returns cleanup function that aborts fetch. Parses SSE manually (regex on `event:` and `data:` lines). Reads JSON error body on non-OK responses. |
+| `getMessages(sessionId)` | GET | `/messages?session_id=` | Returns `ApiMessage[]` (persisted chat history) |
+| `streamChat(sessionId, question, handlers)` | POST | `/chat` | Raw `fetch` with `AbortController` for SSE. NOT Axios. Manually attaches Bearer token. Handlers: `onToken`, `onCitations`, `onDone`, `onError`. Returns cleanup function that aborts fetch. Parses SSE manually (regex on `event:` and `data:` lines). Reads JSON error body on non-OK responses. No `history` param — backend loads history from DB. |
 
 ### Auth Store (`src/store/useAuthStore.ts`)
 
@@ -68,12 +69,13 @@ Base URL from `VITE_API_URL` env var (defaults to `http://localhost:8000`).
 
 **Actions (store is a thin state container — orchestration lives in components):**
 - `setSessions(sessions)` — replace all sessions
-- `setCurrentSessionId(id)` — switch session, clears messages and documents
+- `setCurrentSessionId(id)` — switch session, clears documents (messages loaded separately via API)
 - `setDocuments(docs)` — update documents for current session
 - `addUserMessage(content) -> id` — creates message with `crypto.randomUUID()`
 - `startAssistantMessage() -> id` — creates empty assistant message with `isStreaming: true`
 - `appendToken(id, token)` — appends token to specific message
 - `finishMessage(id, citations, lowConfidence)` — sets `isStreaming: false`, adds citations
+- `setMessages(messages)` — replace all messages (used to load persisted chat history)
 - `setIsStreaming(v)` — global streaming flag
 - `removeDocument(docId)` — filters out document
 - `removeSession(sessionId)` — removes session, clears state if it was current
@@ -84,7 +86,7 @@ Base URL from `VITE_API_URL` env var (defaults to `http://localhost:8000`).
 |-----------|-------------|
 | `App.tsx` | Auth gate: renders `<AuthPage>` when not authenticated, otherwise two-column flex layout: `<Sidebar>` + `<ChatPanel>` (flex-1). Uses `useAuthStore.isAuthenticated` |
 | `AuthPage.tsx` | Login/signup form with email + password fields. Toggles between login/signup modes. Calls `login()`/`signup()` from client, then `setAuth()` on success. Shows error messages from backend (409 duplicate email, 401 bad credentials). Centered card layout on gray background |
-| `Sidebar.tsx` | Session list (click to select, trash to delete) + document list for active session with delete buttons + user email display + logout button at bottom. Calls `loadSessions()` on mount. Logout calls `logout()` + `clearAuth()`. Icons: `BookOpen`, `FileText`, `Trash2`, `LogOut` |
+| `Sidebar.tsx` | Session list (click to select, trash to delete) + document list for active session with delete buttons + user email display + logout button at bottom. Calls `loadSessions()` on mount. On session select: loads documents and persisted messages in parallel via `getDocuments` + `getMessages`. Logout calls `logout()` + `clearAuth()`. Icons: `BookOpen`, `FileText`, `Trash2`, `LogOut` |
 | `ChatPanel.tsx` | Message list with auto-scroll, upload success banner (green, auto-dismisses after 4s), `<UploadZone>` when no docs/session, input textarea + send button (disabled during streaming with Loader2 spinner). Icons: `Send`, `Loader2`, `CheckCircle2` |
 | `MessageBubble.tsx` | User bubbles (blue, right) / assistant bubbles (white with border, left). Assistant uses `<ReactMarkdown>` in `prose prose-invert` wrapper. Streaming cursor `▍`. Low confidence amber warning with `AlertTriangle`. `CitationCard` list (hidden while streaming) |
 | `CitationCard.tsx` | Expandable card: file name, page, score badge (green >= 70% / yellow < 70%). Expanded shows chunk text. Icons: `ChevronDown`/`ChevronUp`, `FileText` |

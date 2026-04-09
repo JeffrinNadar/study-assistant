@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { Trash2, BookOpen, LogOut } from 'lucide-react';
-import { getSessions, getDocuments, deleteDocument, deleteSession, logout } from '../api/client';
+import { getSessions, getDocuments, getMessages, deleteDocument, deleteSession, logout } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
 
 export function Sidebar() {
-  const { sessions, currentSessionId, documents, setSessions, setCurrentSessionId, setDocuments, removeDocument, removeSession } = useAppStore();
+  const { sessions, currentSessionId, documents, setSessions, setCurrentSessionId, setDocuments, setMessages, removeDocument, removeSession } = useAppStore();
   const { email, clearAuth } = useAuthStore();
 
   const handleLogout = () => {
@@ -19,8 +19,20 @@ export function Sidebar() {
 
   const selectSession = async (id: string) => {
     setCurrentSessionId(id);
-    const docs = await getDocuments(id);
+    const [docs, apiMessages] = await Promise.all([
+      getDocuments(id),
+      getMessages(id),
+    ]);
     setDocuments(docs);
+    setMessages(
+      apiMessages.map((m) => ({
+        id: String(m.id),
+        role: m.role,
+        content: m.content,
+        citations: m.citations ?? undefined,
+        lowConfidence: m.low_confidence,
+      })),
+    );
   };
 
   const handleDeleteDoc = async (docId: string) => {

@@ -19,6 +19,7 @@ interface AppState {
   startAssistantMessage: () => string;          // returns message id
   appendToken: (id: string, token: string) => void;
   finishMessage: (id: string, citations: Citation[], lowConfidence: boolean) => void;
+  setMessages: (messages: Message[]) => void;
   setIsStreaming: (v: boolean) => void;
   removeDocument: (docId: string) => void;
   removeSession: (sessionId: string) => void;
@@ -32,7 +33,8 @@ export const useAppStore = create<AppState>((set) => ({
   isStreaming: false,
 
   setSessions: (sessions) => set({ sessions }),
-  setCurrentSessionId: (id) => set({ currentSessionId: id, messages: [], documents: [] }),
+  setCurrentSessionId: (id) => set({ currentSessionId: id, documents: [] }),
+  setMessages: (messages) => set({ messages }),
   setDocuments: (docs) => set({ documents: docs }),
 
   addUserMessage: (content) => {

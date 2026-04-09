@@ -64,6 +64,8 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The
 - **Per-user session scoping**: `Session` has a `user_id` field. All CRUD operations verify `session.user_id == current_user.id` to prevent cross-user data access. Upload creates sessions with the current user's ID.
 - **bcrypt directly (not passlib)**: `passlib[bcrypt]` 1.7.4 is incompatible with `bcrypt>=5.0`. The auth service uses `bcrypt==4.0.1` directly for password hashing/verification.
 - **Frontend auth gate**: `App.tsx` checks `useAuthStore.isAuthenticated` — renders `AuthPage` (login/signup form) when not authenticated, main app when authenticated. JWT stored in `localStorage`.
+- **Persistent chat history**: Chat messages are stored in a `ChatMessage` SQLite table. The `/chat` endpoint saves user messages before streaming and assistant messages (with citations) after streaming completes. History is loaded from DB (last 10 messages) for LLM context — the frontend no longer sends history. `GET /messages?session_id=` returns persisted messages. Frontend loads messages on session select via `Sidebar.tsx`.
+- **Fresh DBSession in SSE generator**: The assistant message is saved inside the SSE generator using a fresh `DBSession(engine)` context manager because the request-scoped DB session is closed by the time the generator runs. Chunk data is eagerly extracted as plain dicts before entering the generator to avoid SQLAlchemy detached-instance errors.
 
 ## Backend Layout
 
@@ -76,8 +78,8 @@ backend/
 │   ├── routers/
 │   │   ├── auth.py          # POST /auth/signup, POST /auth/login — JWT authentication
 │   │   ├── upload.py        # POST /upload — full ingestion pipeline (auth required)
-│   │   ├── chat.py          # POST /chat — SSE streaming with FAISS retrieval (auth required)
-│   │   ├── sessions.py      # GET/POST/DELETE /sessions; auto-prunes empty sessions (auth required)
+│   │   ├── chat.py          # POST /chat — SSE streaming with FAISS retrieval, persists messages (auth required)
+│   │   ├── sessions.py      # GET/POST/DELETE /sessions; GET /messages; auto-prunes empty sessions (auth required)
 │   │   └── documents.py     # GET /documents, DELETE /documents/{id}; cleans up empty FAISS index (auth required)
 │   ├── services/
 │   │   ├── auth.py          # hash_password, verify_password, create_access_token, get_current_user dependency
@@ -90,8 +92,9 @@ backend/
 │       ├── user.py          # User(id, email, hashed_password, created_at)
 │       ├── chunk.py         # Chunk(id, session_id, doc_id, file_name, page_num, chunk_index, text, faiss_id)
 │       ├── document.py      # Document(id, session_id, file_name, pages, chunks)
-│       └── session.py       # Session(id, user_id, name, created_at)
-├── tests/                   # 21 tests; all OpenAI calls mocked with unittest.mock
+│       ├── session.py       # Session(id, user_id, name, created_at)
+│       └── chat_message.py  # ChatMessage(id, session_id, role, content, citations, low_confidence, created_at)
+├── tests/                   # 23 tests; all OpenAI calls mocked with unittest.mock
 ├── eval/
 │   ├── evaluate.py          # RAGAS evaluation script (pip install ragas datasets)
 │   └── test_set.json        # 3 placeholder Q&A pairs — replace with real questions
@@ -109,15 +112,15 @@ backend/
 frontend/src/
 ├── types.ts                 # Session, Document, Citation, Message, UploadResponse, AuthResponse, SSEEvent
 ├── api/client.ts            # Axios instance + JWT interceptor; signup, login, logout,
-│                            # uploadFiles, getSessions, getDocuments, deleteDocument,
-│                            # deleteSession, streamChat (fetch + AbortController + auth header)
+│                            # uploadFiles, getSessions, getDocuments, getMessages,
+│                            # deleteDocument, deleteSession, streamChat (fetch + AbortController)
 ├── store/
 │   ├── useAppStore.ts       # Zustand: sessions, messages, streaming state + actions
 │   └── useAuthStore.ts      # Zustand: token, email, isAuthenticated, setAuth, clearAuth
 └── components/
     ├── App.tsx              # Auth gate: shows AuthPage or main layout (Sidebar + ChatPanel)
     ├── AuthPage.tsx         # Login/signup form with email + password; toggles between modes
-    ├── Sidebar.tsx          # Session list + document list + user email + logout button
+    ├── Sidebar.tsx          # Session list + document list + loads messages on select + logout
     ├── ChatPanel.tsx        # Message list, upload success banner, UploadZone, input bar + send
     ├── MessageBubble.tsx    # User/assistant bubbles; markdown; streaming cursor ▍;
     │                        # low-confidence amber warning; CitationCard list
@@ -154,7 +157,7 @@ session_id — optional; omit to create a new session
 
 ### `POST /chat`
 ```json
-{ "session_id": "uuid", "question": "...", "history": [{ "role": "user", "content": "..." }] }
+{ "session_id": "uuid", "question": "..." }
 ```
 SSE events (in order):
 ```
@@ -163,14 +166,18 @@ event: citations   data: {"citations": [{"file": "x.pdf", "page": 3, "text": "..
 event: done        data: {}
 event: error       data: {"detail": "..."} — only on exception
 ```
-History capped at last 10 turns server-side.
+Backend automatically saves user message before streaming and assistant message after streaming. History loaded from DB (last 10 turns).
+
+### `GET /messages?session_id={id}`
+Returns persisted chat messages ordered by `created_at` ascending.
+Each message: `{ id, role, content, citations, low_confidence, created_at }`.
 
 ### `GET /sessions`
 Returns sessions ordered by `created_at` descending, each with `doc_count`.
 Auto-prunes sessions with 0 documents (cleans up chunks, FAISS index, and uploaded files).
 
 ### `DELETE /sessions/{session_id}`
-Deletes a session and all associated data: chunks, documents, FAISS index file, and uploaded PDFs.
+Deletes a session and all associated data: chunks, documents, chat messages, FAISS index file, and uploaded PDFs.
 Returns `{ "success": true }`.
 
 ### `GET /documents?session_id={id}`

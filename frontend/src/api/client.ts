@@ -50,6 +50,20 @@ export async function getDocuments(sessionId: string): Promise<Document[]> {
   return data;
 }
 
+export interface ApiMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  citations: Citation[] | null;
+  low_confidence: boolean;
+  created_at: string;
+}
+
+export async function getMessages(sessionId: string): Promise<ApiMessage[]> {
+  const { data } = await api.get<ApiMessage[]>('/messages', { params: { session_id: sessionId } });
+  return data;
+}
+
 export async function deleteDocument(docId: string): Promise<void> {
   await api.delete(`/documents/${docId}`);
 }
@@ -65,7 +79,6 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export function streamChat(
   sessionId: string,
   question: string,
-  history: Array<{ role: string; content: string }>,
   handlers: {
     onToken: (token: string) => void;
     onCitations: (citations: Citation[], lowConfidence: boolean) => void;
@@ -85,7 +98,7 @@ export function streamChat(
           Accept: 'text/event-stream',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ session_id: sessionId, question, history }),
+        body: JSON.stringify({ session_id: sessionId, question }),
         signal: controller.signal,
       });
 

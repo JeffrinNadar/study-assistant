@@ -41,11 +41,7 @@ export function ChatPanel() {
     const assistantId = startAssistantMessage();
     setIsStreaming(true);
 
-    const history = messages
-      .filter((m) => !m.isStreaming)
-      .map((m) => ({ role: m.role, content: m.content }));
-
-    streamChat(currentSessionId, question, history, {
+    streamChat(currentSessionId, question, {
       onToken: (token) => appendToken(assistantId, token),
       onCitations: (citations, lowConfidence) => finishMessage(assistantId, citations, lowConfidence),
       onDone: () => setIsStreaming(false),
@@ -55,7 +51,7 @@ export function ChatPanel() {
         setIsStreaming(false);
       },
     });
-  }, [input, currentSessionId, isStreaming, messages, addUserMessage, startAssistantMessage, appendToken, finishMessage, setIsStreaming]);
+  }, [input, currentSessionId, isStreaming, addUserMessage, startAssistantMessage, appendToken, finishMessage, setIsStreaming]);
 
   const hasSession = Boolean(currentSessionId);
 
