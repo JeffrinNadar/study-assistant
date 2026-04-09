@@ -1,14 +1,16 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { Send, Loader2, CheckCircle2, Paperclip } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { UploadZone } from './UploadZone';
 import { useAppStore } from '../store/useAppStore';
-import { streamChat, getDocuments, getSessions } from '../api/client';
+import { streamChat, getDocuments, getSessions, uploadFiles } from '../api/client';
 
 export function ChatPanel() {
   const [input, setInput] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     messages, currentSessionId, sessions, isStreaming,
     addUserMessage, startAssistantMessage, appendToken, finishMessage, setIsStreaming,
@@ -19,18 +21,17 @@ export function ChatPanel() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleUploadComplete = useCallback(async (fileCount: number) => {
+  const handleUploadComplete = useCallback(async (fileCount: number, sessionId: string) => {
     setUploadSuccess(`${fileCount} file${fileCount !== 1 ? 's' : ''} uploaded successfully`);
     setTimeout(() => setUploadSuccess(null), 4000);
 
-    if (!currentSessionId) return;
     const [docs, sessions] = await Promise.all([
-      getDocuments(currentSessionId),
+      getDocuments(sessionId),
       getSessions(),
     ]);
     setDocuments(docs);
     setSessions(sessions);
-  }, [currentSessionId, setDocuments, setSessions]);
+  }, [setDocuments, setSessions]);
 
   const handleSubmit = useCallback(async () => {
     if (!input.trim() || !currentSessionId || isStreaming) return;
@@ -60,6 +61,21 @@ export function ChatPanel() {
       },
     });
   }, [input, currentSessionId, isStreaming, sessions, messages.length, addUserMessage, startAssistantMessage, appendToken, finishMessage, setIsStreaming, updateSessionName]);
+
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length || !currentSessionId) return;
+    setIsUploading(true);
+    try {
+      const resp = await uploadFiles(files, currentSessionId);
+      await handleUploadComplete(resp.files.length, resp.session_id);
+    } catch {
+      setUploadSuccess(null);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [currentSessionId, handleUploadComplete]);
 
   const hasSession = Boolean(currentSessionId);
 
@@ -95,7 +111,23 @@ export function ChatPanel() {
       {/* Input bar */}
       {hasSession && (
         <div className="p-4 border-t border-gray-200 bg-white">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileSelect}
+          />
           <div className="flex gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isStreaming || isUploading}
+              className="border border-gray-300 hover:bg-gray-100 disabled:opacity-40 text-gray-500 rounded-lg px-3 py-2"
+              title="Upload PDF"
+            >
+              {isUploading ? <Loader2 size={16} className="animate-spin" /> : <Paperclip size={16} />}
+            </button>
             <input
               className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Ask a question about your documents…"
