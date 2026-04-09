@@ -58,7 +58,12 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The
 - **SSE via `fetch` (not `EventSource`)**: The SSE client in `api/client.ts` uses `fetch` + `ReadableStream` with an `AbortController` because the backend uses `POST /chat`, and `EventSource` only supports GET.
 - **Empty FAISS index cleanup**: When deleting a document leaves 0 vectors, the FAISS index file is deleted rather than saved empty. This prevents 422/404 errors when chatting in a session with no documents.
 - **Session auto-prune**: `GET /sessions` automatically deletes sessions with 0 documents (e.g., after indices are manually cleared). `DELETE /sessions/{id}` removes all associated data including chunks, documents, FAISS index, and uploaded files.
+- **Session rename**: `PATCH /sessions/{id}` accepts `{ "name": "..." }` and caps at 100 chars. The frontend exposes inline editing via a pencil icon on each session in the sidebar.
+- **Session auto-naming**: The `/chat` endpoint auto-renames sessions still named "New Session" to the user's first question (truncated to 100 chars). The frontend also optimistically updates the sidebar name on first message.
+- **New Chat button**: The sidebar has a "New Chat" button that resets `currentSessionId`, `documents`, and `messages` to null/empty, returning the user to the initial upload screen without a page reload.
+- **Mid-chat file upload**: A paperclip button in the chat input bar opens a file picker for uploading additional PDFs to the current session. Uses a hidden `<input type="file">` rather than the dropzone component. Shows a spinner during upload and refreshes the sidebar documents/sessions in real time.
 - **Upload success banner**: The success notification lives in `ChatPanel` (not `UploadZone`) because `UploadZone` unmounts when a new session is created on first upload.
+- **Real-time sidebar updates on upload**: `UploadZone.onUploaded` passes the `sessionId` from the upload response to `handleUploadComplete`, which uses it directly instead of relying on the closure-captured `currentSessionId`. This ensures sessions and documents refresh immediately even when a new session was just created.
 - **SSE error detail forwarding**: The frontend `streamChat` reads the JSON response body on non-OK responses to surface backend error messages (e.g., "No documents in this session") instead of raw status codes.
 - **JWT authentication**: All API endpoints (except `/ping` and `/auth/*`) require a Bearer token. Tokens are issued on signup/login with a 24-hour expiry (configurable via `JWT_EXPIRY_MINUTES`). The `get_current_user` FastAPI dependency decodes the JWT and fetches the User from SQLite.
 - **Per-user session scoping**: `Session` has a `user_id` field. All CRUD operations verify `session.user_id == current_user.id` to prevent cross-user data access. Upload creates sessions with the current user's ID.
@@ -79,7 +84,7 @@ backend/
 │   │   ├── auth.py          # POST /auth/signup, POST /auth/login — JWT authentication
 │   │   ├── upload.py        # POST /upload — full ingestion pipeline (auth required)
 │   │   ├── chat.py          # POST /chat — SSE streaming with FAISS retrieval, persists messages (auth required)
-│   │   ├── sessions.py      # GET/POST/DELETE /sessions; GET /messages; auto-prunes empty sessions (auth required)
+│   │   ├── sessions.py      # GET/POST/PATCH/DELETE /sessions; GET /messages; auto-prunes empty sessions (auth required)
 │   │   └── documents.py     # GET /documents, DELETE /documents/{id}; cleans up empty FAISS index (auth required)
 │   ├── services/
 │   │   ├── auth.py          # hash_password, verify_password, create_access_token, get_current_user dependency
@@ -113,15 +118,15 @@ frontend/src/
 ├── types.ts                 # Session, Document, Citation, Message, UploadResponse, AuthResponse, SSEEvent
 ├── api/client.ts            # Axios instance + JWT interceptor; signup, login, logout,
 │                            # uploadFiles, getSessions, getDocuments, getMessages,
-│                            # deleteDocument, deleteSession, streamChat (fetch + AbortController)
+│                            # deleteDocument, deleteSession, renameSession, streamChat (fetch + AbortController)
 ├── store/
-│   ├── useAppStore.ts       # Zustand: sessions, messages, streaming state + actions
+│   ├── useAppStore.ts       # Zustand: sessions, messages, streaming state + actions (incl. updateSessionName, startNewChat)
 │   └── useAuthStore.ts      # Zustand: token, email, isAuthenticated, setAuth, clearAuth
 └── components/
     ├── App.tsx              # Auth gate: shows AuthPage or main layout (Sidebar + ChatPanel)
     ├── AuthPage.tsx         # Login/signup form with email + password; toggles between modes
-    ├── Sidebar.tsx          # Session list + document list + loads messages on select + logout
-    ├── ChatPanel.tsx        # Message list, upload success banner, UploadZone, input bar + send
+    ├── Sidebar.tsx          # New Chat button + session list (inline rename, delete) + document list + logout
+    ├── ChatPanel.tsx        # Message list, upload success banner, UploadZone, paperclip upload button, input bar + send
     ├── MessageBubble.tsx    # User/assistant bubbles; markdown; streaming cursor ▍;
     │                        # low-confidence amber warning; CitationCard list
     ├── CitationCard.tsx     # Expandable: file, page, % match badge (green ≥70% / yellow <70%)
@@ -175,6 +180,13 @@ Each message: `{ id, role, content, citations, low_confidence, created_at }`.
 ### `GET /sessions`
 Returns sessions ordered by `created_at` descending, each with `doc_count`.
 Auto-prunes sessions with 0 documents (cleans up chunks, FAISS index, and uploaded files).
+
+### `PATCH /sessions/{session_id}`
+```json
+{ "name": "new name" }
+```
+Renames a session. Name capped at 100 characters.
+Returns `{ "id": "uuid", "name": "new name" }`.
 
 ### `DELETE /sessions/{session_id}`
 Deletes a session and all associated data: chunks, documents, chat messages, FAISS index file, and uploaded PDFs.

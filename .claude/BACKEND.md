@@ -28,8 +28,8 @@ All endpoints (except `/ping` and `/auth/*`) require `Authorization: Bearer <tok
 |--------|-----------|-------------|
 | `routers/auth.py` | `POST /auth/signup`, `POST /auth/login` | Accepts `{email, password}`. Returns `{access_token, token_type, user_id, email}`. Signup: 409 on duplicate email. Login: 401 on bad credentials |
 | `routers/upload.py` | `POST /upload` | Auth required. Accepts `files[]` + optional `session_id` (Form). Max 5 files, 20 MB each. Creates session with `user_id` if none. Verifies session ownership. Pipeline: save PDF -> parse -> chunk -> embed -> FAISS + SQLite |
-| `routers/chat.py` | `POST /chat` | Auth required. Body: `{session_id, question}`. Verifies session ownership. Path traversal guard. FAISS top-5 search. Low confidence if best score < 0.70. Saves user message before streaming, saves assistant message after streaming (fresh DBSession inside generator). Loads last 10 messages from DB for LLM context. Returns SSE: token -> citations -> done (or error) |
-| `routers/sessions.py` | `GET /sessions`, `POST /sessions`, `DELETE /sessions/{id}`, `GET /messages` | Auth required. All operations scoped to `current_user.id`. GET auto-prunes sessions with 0 docs. DELETE verifies ownership, removes chunks, docs, chat messages, FAISS index, uploaded files. `GET /messages?session_id=` returns chat history ordered by `created_at` |
+| `routers/chat.py` | `POST /chat` | Auth required. Body: `{session_id, question}`. Verifies session ownership. Path traversal guard. FAISS top-5 search. Low confidence if best score < 0.70. Auto-renames session from "New Session" to first question (truncated to 100 chars). Saves user message before streaming, saves assistant message after streaming (fresh DBSession inside generator). Loads last 10 messages from DB for LLM context. Returns SSE: token -> citations -> done (or error) |
+| `routers/sessions.py` | `GET /sessions`, `POST /sessions`, `PATCH /sessions/{id}`, `DELETE /sessions/{id}`, `GET /messages` | Auth required. All operations scoped to `current_user.id`. GET auto-prunes sessions with 0 docs. PATCH renames session (capped at 100 chars). DELETE verifies ownership, removes chunks, docs, chat messages, FAISS index, uploaded files. `GET /messages?session_id=` returns chat history ordered by `created_at` |
 | `routers/documents.py` | `GET /documents`, `DELETE /documents/{id}` | Auth required. GET requires `session_id` query param, verifies session ownership. DELETE verifies ownership via session, removes chunks + FAISS vectors; deletes index file if empty |
 
 ### Services
@@ -120,4 +120,6 @@ Railway.app via `Dockerfile` (python:3.11-slim) and `railway.json`. Set env vars
 - Empty FAISS index files are deleted (not saved) to prevent 422/404 on chat
 - SSE error events are yielded on exception instead of silently closing the stream
 - Session auto-prune happens on `GET /sessions`
+- Session auto-naming: `/chat` renames "New Session" to first question (truncated to 100 chars)
+- `PATCH /sessions/{id}` accepts `{"name": "..."}` for manual rename (capped at 100 chars)
 - Config auto-creates `data/`, `data/faiss_indices/`, and `uploads/` dirs on import

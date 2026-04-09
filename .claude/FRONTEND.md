@@ -51,6 +51,7 @@ Base URL from `VITE_API_URL` env var (defaults to `http://localhost:8000`).
 | `getDocuments(sessionId)` | GET | `/documents?session_id=` | Returns `Document[]` |
 | `deleteDocument(docId)` | DELETE | `/documents/{id}` | |
 | `deleteSession(sessionId)` | DELETE | `/sessions/{id}` | |
+| `renameSession(sessionId, name)` | PATCH | `/sessions/{id}` | Body: `{name}`. Returns `{id, name}` |
 | `getMessages(sessionId)` | GET | `/messages?session_id=` | Returns `ApiMessage[]` (persisted chat history) |
 | `streamChat(sessionId, question, handlers)` | POST | `/chat` | Raw `fetch` with `AbortController` for SSE. NOT Axios. Manually attaches Bearer token. Handlers: `onToken`, `onCitations`, `onDone`, `onError`. Returns cleanup function that aborts fetch. Parses SSE manually (regex on `event:` and `data:` lines). Reads JSON error body on non-OK responses. No `history` param — backend loads history from DB. |
 
@@ -79,6 +80,8 @@ Base URL from `VITE_API_URL` env var (defaults to `http://localhost:8000`).
 - `setIsStreaming(v)` — global streaming flag
 - `removeDocument(docId)` — filters out document
 - `removeSession(sessionId)` — removes session, clears state if it was current
+- `updateSessionName(sessionId, name)` — updates session name in the sessions array (optimistic UI)
+- `startNewChat()` — resets `currentSessionId`, `documents`, and `messages` to null/empty
 
 ### Components
 
@@ -86,11 +89,11 @@ Base URL from `VITE_API_URL` env var (defaults to `http://localhost:8000`).
 |-----------|-------------|
 | `App.tsx` | Auth gate: renders `<AuthPage>` when not authenticated, otherwise two-column flex layout: `<Sidebar>` + `<ChatPanel>` (flex-1). Uses `useAuthStore.isAuthenticated` |
 | `AuthPage.tsx` | Login/signup form with email + password fields. Toggles between login/signup modes. Calls `login()`/`signup()` from client, then `setAuth()` on success. Shows error messages from backend (409 duplicate email, 401 bad credentials). Centered card layout on gray background |
-| `Sidebar.tsx` | Session list (click to select, trash to delete) + document list for active session with delete buttons + user email display + logout button at bottom. Calls `loadSessions()` on mount. On session select: loads documents and persisted messages in parallel via `getDocuments` + `getMessages`. Logout calls `logout()` + `clearAuth()`. Icons: `BookOpen`, `FileText`, `Trash2`, `LogOut` |
-| `ChatPanel.tsx` | Message list with auto-scroll, upload success banner (green, auto-dismisses after 4s), `<UploadZone>` when no docs/session, input textarea + send button (disabled during streaming with Loader2 spinner). Icons: `Send`, `Loader2`, `CheckCircle2` |
+| `Sidebar.tsx` | "New Chat" button at top + session list (click to select, pencil to inline-rename, trash to delete) + document list for active session with delete buttons + user email display + logout button at bottom. Calls `loadSessions()` on mount. On session select: loads documents and persisted messages in parallel via `getDocuments` + `getMessages`. Inline rename: text input with confirm/cancel buttons, calls `renameSession` API + `updateSessionName` store action. Logout calls `logout()` + `clearAuth()`. Icons: `BookOpen`, `Trash2`, `LogOut`, `Plus`, `Pencil`, `Check`, `X` |
+| `ChatPanel.tsx` | Message list with auto-scroll, upload success banner (green, auto-dismisses after 4s), `<UploadZone>` when no docs/session, paperclip button for mid-chat PDF upload (hidden `<input type="file">`), input textarea + send button (disabled during streaming with Loader2 spinner). Auto-renames session on first message if still "New Session". `handleUploadComplete` takes `sessionId` from upload response to avoid stale closure. Icons: `Send`, `Loader2`, `CheckCircle2`, `Paperclip` |
 | `MessageBubble.tsx` | User bubbles (blue, right) / assistant bubbles (white with border, left). Assistant uses `<ReactMarkdown>` in `prose prose-invert` wrapper. Streaming cursor `▍`. Low confidence amber warning with `AlertTriangle`. `CitationCard` list (hidden while streaming) |
 | `CitationCard.tsx` | Expandable card: file name, page, score badge (green >= 70% / yellow < 70%). Expanded shows chunk text. Icons: `ChevronDown`/`ChevronUp`, `FileText` |
-| `UploadZone.tsx` | `react-dropzone`: PDF only, max 5 files, max 20 MB. Drag-active state (blue border). Spinner during upload. Props: `onUploaded?: (fileCount) => void`. Icons: `Upload` |
+| `UploadZone.tsx` | `react-dropzone`: PDF only, max 5 files, max 20 MB. Drag-active state (blue border). Spinner during upload. Props: `onUploaded?: (fileCount, sessionId) => void`. Passes `sessionId` from upload response to callback. Icons: `Upload` |
 
 ## Tests
 
@@ -129,4 +132,7 @@ For production (Vercel): set `VITE_API_URL` to your Railway backend domain.
 - **`react-markdown` v10** — does NOT accept `className` prop on `<ReactMarkdown>`. Prose class goes on wrapper div.
 - **SSE via `fetch`** — uses `fetch` + `ReadableStream`, not `EventSource`, because backend uses `POST /chat` and `EventSource` only supports GET.
 - **Upload success banner** — lives in `ChatPanel` (not `UploadZone`) because `UploadZone` unmounts when a new session is created on first upload.
+- **Upload callback receives sessionId** — `UploadZone.onUploaded` passes `sessionId` from the upload response. `handleUploadComplete` uses this instead of the closure-captured `currentSessionId` to avoid stale state when a new session was just created.
+- **Session auto-naming** — backend renames "New Session" to first question on `/chat`. Frontend also optimistically updates the sidebar via `updateSessionName` for instant feedback.
+- **Mid-chat upload** — paperclip button in input bar uses a hidden `<input type="file">` (not `react-dropzone`) to avoid layout disruption. Calls `uploadFiles` directly and triggers the same `handleUploadComplete` flow.
 - **SSE error detail** — `streamChat` reads JSON response body on non-OK to surface backend error messages, not raw status codes.
