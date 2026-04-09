@@ -23,6 +23,8 @@ interface AppState {
   setIsStreaming: (v: boolean) => void;
   removeDocument: (docId: string) => void;
   removeSession: (sessionId: string) => void;
+  updateSessionName: (sessionId: string, name: string) => void;
+  startNewChat: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -77,4 +79,14 @@ export const useAppStore = create<AppState>((set) => ({
         ? { currentSessionId: null, documents: [], messages: [] }
         : {}),
     })),
+
+  updateSessionName: (sessionId, name) =>
+    set((s) => ({
+      sessions: s.sessions.map((sess) =>
+        sess.id === sessionId ? { ...sess, name } : sess,
+      ),
+    })),
+
+  startNewChat: () =>
+    set({ currentSessionId: null, documents: [], messages: [] }),
 }));

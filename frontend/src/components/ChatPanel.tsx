@@ -10,9 +10,9 @@ export function ChatPanel() {
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const {
-    messages, currentSessionId, isStreaming,
+    messages, currentSessionId, sessions, isStreaming,
     addUserMessage, startAssistantMessage, appendToken, finishMessage, setIsStreaming,
-    setDocuments, setSessions,
+    setDocuments, setSessions, updateSessionName,
   } = useAppStore();
 
   useEffect(() => {
@@ -37,9 +37,17 @@ export function ChatPanel() {
     const question = input.trim();
     setInput('');
 
+    // Auto-rename session if it's the first user message (still "New Session")
+    const currentSession = sessions.find((s) => s.id === currentSessionId);
+    const isFirstMessage = messages.length === 0 && currentSession?.name === 'New Session';
+
     addUserMessage(question);
     const assistantId = startAssistantMessage();
     setIsStreaming(true);
+
+    if (isFirstMessage) {
+      updateSessionName(currentSessionId, question.slice(0, 100));
+    }
 
     streamChat(currentSessionId, question, {
       onToken: (token) => appendToken(assistantId, token),
@@ -51,7 +59,7 @@ export function ChatPanel() {
         setIsStreaming(false);
       },
     });
-  }, [input, currentSessionId, isStreaming, addUserMessage, startAssistantMessage, appendToken, finishMessage, setIsStreaming]);
+  }, [input, currentSessionId, isStreaming, sessions, messages.length, addUserMessage, startAssistantMessage, appendToken, finishMessage, setIsStreaming, updateSessionName]);
 
   const hasSession = Boolean(currentSessionId);
 

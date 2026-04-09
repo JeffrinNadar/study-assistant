@@ -72,6 +72,11 @@ export async function deleteSession(sessionId: string): Promise<void> {
   await api.delete(`/sessions/${sessionId}`);
 }
 
+export async function renameSession(sessionId: string, name: string): Promise<{ id: string; name: string }> {
+  const { data } = await api.patch(`/sessions/${sessionId}`, { name });
+  return data;
+}
+
 /**
  * Open an SSE connection to POST /chat and call handlers for each event type.
  * Returns a cleanup function that aborts the fetch.
