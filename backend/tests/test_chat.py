@@ -112,3 +112,54 @@ def test_chat_persists_messages(client, auth_headers):
     assert messages[1]["role"] == "assistant"
     assert messages[1]["content"] == "Hello world."
     assert messages[1]["citations"] is not None
+
+def test_regenerate_replaces_assistant_message(client, auth_headers):
+    """POST /messages/{id}/regenerate replaces the assistant message."""
+    import fitz, io
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "Gradient descent minimizes a loss function. " * 50)
+    buf = io.BytesIO()
+    doc.save(buf)
+    pdf_bytes = buf.getvalue()
+
+    with patch("app.routers.upload.embed_texts", side_effect=mock_embed):
+        upload_resp = client.post(
+            "/upload",
+            files=[("files", ("notes.pdf", pdf_bytes, "application/pdf"))],
+            headers=auth_headers,
+        )
+    session_id = upload_resp.json()["session_id"]
+
+    # Send initial chat
+    mock_stream = MagicMock(return_value=iter(["Original", " answer."]))
+    with patch("app.routers.chat.embed_texts", side_effect=mock_embed), \
+        patch("app.routers.chat.stream_answer", mock_stream):
+        client.post(
+            "/chat",
+            json={"session_id": session_id, "question": "What is gradient descent?"},
+            headers={**auth_headers, "Accept": "text/event-stream"},
+        )
+
+    # Get the assistant message ID
+    messages_resp = client.get(f"/messages?session_id={session_id}", headers=auth_headers)
+    messages = messages_resp.json()
+    assistant_msg = [m for m in messages if m["role"] == "assistant"][0]
+
+    # Regenerate
+    mock_regen = MagicMock(return_value=iter(["New", " answer."]))
+    with patch("app.routers.chat.embed_texts", side_effect=mock_embed), \
+        patch("app.routers.chat.stream_answer", mock_regen):
+        resp = client.post(
+            f"/messages/{assistant_msg['id']}/regenerate",
+            headers={**auth_headers, "Accept": "text/event-stream"},
+        )
+    assert resp.status_code == 200
+    assert "event: token" in resp.text
+
+    # Verify message was replaced
+    messages_resp = client.get(f"/messages?session_id={session_id}", headers=auth_headers)
+    messages = messages_resp.json()
+    assistant_msgs = [m for m in messages if m["role"] == "assistant"]
+    assert len(assistant_msgs) == 1
+    assert assistant_msgs[0]["content"] == "New answer."
