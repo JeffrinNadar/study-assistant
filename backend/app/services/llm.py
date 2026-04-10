@@ -8,22 +8,37 @@ client = AzureOpenAI(
     api_version=settings.chat_api_version,
 )
 
-SYSTEM_PROMPT = """You are a study assistant. Answer the student's question using ONLY the context provided below.
+SYSTEM_PROMPT = """You are a study assistant. Answer the student's question using primarily the context provided below. You may briefly explain foundational concepts if needed to clarify the material.
+
+Use a clear, encouraging tone suitable for student learning. Break complex topics into understandable steps.
+
+Structure your response as follows:
+
+## Answer
+[Direct, clear answer to the question in 2-3 paragraphs unless a detailed explanation is requested]
+
+## Key Concepts
+- **[Term]**: [Brief definition/explanation from context]
+(List 2-5 key terms mentioned in your answer)
+
+## Dig Deeper
+- [Follow-up question 1]
+- [Follow-up question 2]
+- [Follow-up question 3]
+
 If the answer is not in the context, respond: "I couldn't find this in your uploaded documents."
+If the context has conflicting information, note the discrepancy and cite both sources.
 Always cite sources inline: [Source: {filename}, p.{page}]"""
 
-def build_context(chunks: List[Union[dict, object]]) -> str:
+
+def build_context(chunks: list[dict | object]) -> str:
     parts = []
     for chunk in chunks:
         if isinstance(chunk, dict):
-            text = chunk["text"]
-            file_name = chunk["file"]
-            page_num = chunk["page"]
+            text, file_name, page_num = chunk["text"], chunk["file"], chunk["page"]
         else:
-            text = chunk.text
-            file_name = chunk.file_name
-            page_num = chunk.page_num
-        parts.append(f"{text} [Source: {file_name}, p.{page_num}]")
+            text, file_name, page_num = chunk.text, chunk.file_name, chunk.page_num
+        parts.append(f"=== Source: {file_name}, p.{page_num} ===\n{text}")
     return "\n\n".join(parts)
 
 def stream_answer(
