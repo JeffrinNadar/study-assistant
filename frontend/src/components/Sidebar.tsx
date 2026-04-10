@@ -4,7 +4,7 @@ import { getSessions, getDocuments, getMessages, deleteDocument, deleteSession, 
 import { useAppStore } from '../store/useAppStore';
 import { useAuthStore } from '../store/useAuthStore';
 
-export function Sidebar() {
+export function Sidebar({ onClose: _onClose }: { onClose?: () => void }) {
   const { sessions, currentSessionId, documents, setSessions, setCurrentSessionId, setDocuments, setMessages, removeDocument, removeSession, updateSessionName, startNewChat } = useAppStore();
   const { email, clearAuth } = useAuthStore();
   const [editingId, setEditingId] = useState<string | null>(null);
