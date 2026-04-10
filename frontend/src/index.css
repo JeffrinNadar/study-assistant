@@ -1,1 +1,112 @@
 @import "tailwindcss";
+
+@theme {
+  /* Notebook palette */
+  --color-cream: #FFF8F0;
+  --color-kraft: #F5EDE3;
+  --color-ruled: #C5D1E0;
+  --color-margin: #E8A0BF;
+  --color-pencil: #2B4C7E;
+  --color-pencil-dark: #1E3A5F;
+  --color-eraser: #E8A0BF;
+  --color-charcoal: #2D2D2D;
+  --color-charcoal-light: #4A4A4A;
+
+  /* Chalkboard (dark mode) */
+  --color-chalk-bg: #2C3E2D;
+  --color-chalk-bg-light: #3A4F3B;
+  --color-chalk-text: #F0EDE6;
+  --color-chalk-muted: #B8C4B8;
+
+  /* Font families */
+  --font-hand: "Caveat", cursive;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+/* Ruled-line background pattern */
+.bg-ruled {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 31px,
+    var(--color-ruled) 31px,
+    var(--color-ruled) 32px
+  );
+  background-size: 100% 32px;
+}
+
+/* Paper texture overlay (very subtle) */
+.bg-paper {
+  background-color: var(--color-cream);
+  background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+}
+
+/* Pencil writing cursor animation */
+@keyframes pencil-write {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.pencil-cursor::after {
+  content: "✏️";
+  display: inline;
+  animation: pencil-write 1s ease-in-out infinite;
+  font-size: 0.875rem;
+}
+
+/* Binder rings decoration */
+.binder-rings {
+  position: relative;
+}
+.binder-rings::after {
+  content: "";
+  position: absolute;
+  right: -8px;
+  top: 80px;
+  width: 16px;
+  height: calc(100% - 160px);
+  background-image: radial-gradient(circle 6px, var(--color-charcoal-light) 5px, transparent 6px);
+  background-size: 16px 60px;
+  background-repeat: repeat-y;
+  z-index: 10;
+}
+
+/* Focus ring — teacher markup style */
+*:focus-visible {
+  outline: 2px dashed var(--color-pencil);
+  outline-offset: 2px;
+}
+
+/* Dark mode base */
+.dark {
+  color-scheme: dark;
+}
+.dark .bg-paper {
+  background-color: var(--color-chalk-bg);
+  background-image: none;
+}
+.dark .bg-ruled {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 31px,
+    rgba(240, 237, 230, 0.08) 31px,
+    rgba(240, 237, 230, 0.08) 32px
+  );
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-ruled);
+  border-radius: 3px;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-charcoal);
+}
