@@ -115,3 +115,18 @@ body {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+/* Key Concepts study card styling */
+.prose-sm h2 + ul {
+  background-color: var(--color-cream);
+  border: 1px solid var(--color-ruled);
+  border-left: 3px solid var(--color-pencil);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin-top: 0.5rem;
+}
+.dark .prose-sm h2 + ul {
+  background-color: var(--color-chalk-bg);
+  border-color: var(--color-chalk-muted);
+  border-left-color: var(--color-chalk-text);
+}
