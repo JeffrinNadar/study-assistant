@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BookOpen } from 'lucide-react';
 import { login, signup } from '../api/client';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -28,60 +29,63 @@ export function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-sm rounded-lg bg-white p-8 shadow-md">
-        <h1 className="mb-6 text-center text-2xl font-bold text-gray-900">
-          Study Assistant
-        </h1>
+    <div className="flex min-h-screen items-center justify-center bg-paper bg-ruled">
+      <div className="w-full max-w-sm rounded-lg bg-cream border border-ruled p-8 shadow-lg rotate-[-0.5deg] hover:rotate-0 transition-transform duration-300">
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <BookOpen size={28} className="text-pencil" />
+          <h1 className="font-hand text-3xl text-pencil">Study Assistant</h1>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="email" className="mb-1 block text-sm font-medium text-charcoal-light">
               Email
             </label>
             <input
+              id="email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-md border border-ruled bg-white px-3 py-2 text-sm text-charcoal focus:border-pencil focus:outline-none focus:ring-1 focus:ring-pencil dark:bg-chalk-bg dark:border-chalk-muted dark:text-chalk-text"
               placeholder="you@example.com"
             />
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
+            <label htmlFor="password" className="mb-1 block text-sm font-medium text-charcoal-light">
               Password
             </label>
             <input
+              id="password"
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-md border border-ruled bg-white px-3 py-2 text-sm text-charcoal focus:border-pencil focus:outline-none focus:ring-1 focus:ring-pencil dark:bg-chalk-bg dark:border-chalk-muted dark:text-chalk-text"
               placeholder="••••••••"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2 border border-red-200">{error}</p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="w-full rounded-md bg-pencil px-4 py-2 text-sm font-medium text-white hover:bg-pencil-dark disabled:opacity-50 transition-colors"
           >
             {loading ? '...' : isLogin ? 'Log in' : 'Sign up'}
           </button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-gray-600">
+        <p className="mt-4 text-center text-sm text-charcoal-light">
           {isLogin ? "Don't have an account?" : 'Already have an account?'}{' '}
           <button
             type="button"
             onClick={() => { setIsLogin(!isLogin); setError(''); }}
-            className="font-medium text-blue-600 hover:underline"
+            className="font-medium text-pencil hover:underline"
           >
             {isLogin ? 'Sign up' : 'Log in'}
           </button>
