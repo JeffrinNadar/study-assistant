@@ -25,6 +25,7 @@ interface AppState {
   removeSession: (sessionId: string) => void;
   updateSessionName: (sessionId: string, name: string) => void;
   startNewChat: () => void;
+  regenerateMessage: (id: string) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -89,4 +90,11 @@ export const useAppStore = create<AppState>((set) => ({
 
   startNewChat: () =>
     set({ currentSessionId: null, documents: [], messages: [] }),
+
+  regenerateMessage: (id) =>
+    set((s) => ({
+      messages: s.messages.map((m) =>
+        m.id === id ? { ...m, content: '', isStreaming: true, citations: undefined, lowConfidence: undefined } : m,
+      ),
+    })),
 }));
