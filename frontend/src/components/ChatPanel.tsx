@@ -1,10 +1,10 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Send, Loader2, Paperclip } from 'lucide-react';
+import { Send, Loader2, Paperclip, FileDown } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { UploadZone } from './UploadZone';
 import { useAppStore } from '../store/useAppStore';
 import { useToastStore } from '../store/useToastStore';
-import { streamChat, getDocuments, getSessions, uploadFiles } from '../api/client';
+import { streamChat, getDocuments, getSessions, uploadFiles, exportSession } from '../api/client';
 
 export function ChatPanel() {
   const [input, setInput] = useState('');
@@ -76,10 +76,34 @@ export function ChatPanel() {
     }
   }, [currentSessionId, handleUploadComplete, addToast]);
 
+  const handleExport = useCallback(async () => {
+    if (!currentSessionId) return;
+    try {
+      await exportSession(currentSessionId);
+      addToast('Session exported', 'success');
+    } catch {
+      addToast('Export failed', 'error');
+    }
+  }, [currentSessionId, addToast]);
+
   const hasSession = Boolean(currentSessionId);
 
   return (
     <div className="flex flex-col h-full">
+      {/* Header with export */}
+      {hasSession && messages.length > 0 && (
+        <div className="flex items-center justify-end px-4 pt-3 lg:pl-8">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 text-xs text-charcoal-light hover:text-pencil dark:text-chalk-muted dark:hover:text-chalk-text transition-colors"
+            aria-label="Export session as markdown"
+          >
+            <FileDown size={14} />
+            <span className="font-hand text-sm">Export Notes</span>
+          </button>
+        </div>
+      )}
+
       {/* Message list */}
       <div className="flex-1 overflow-y-auto p-4 lg:pl-8 space-y-4">
         {!hasSession && (
@@ -89,7 +113,20 @@ export function ChatPanel() {
             <UploadZone onUploaded={handleUploadComplete} />
           </div>
         )}
-        {messages.map((m) => <MessageBubble key={m.id} message={m} />)}
+        {messages.map((m, i) => (
+          <MessageBubble
+            key={m.id}
+            message={m}
+            isLatest={i === messages.length - 1}
+            onSuggestionClick={(q) => {
+              setInput(q);
+              setTimeout(() => {
+                const submitBtn = document.querySelector('[aria-label="Send message"]') as HTMLButtonElement;
+                submitBtn?.click();
+              }, 100);
+            }}
+          />
+        ))}
         <div ref={bottomRef} />
       </div>
 
