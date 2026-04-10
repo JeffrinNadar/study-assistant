@@ -2,6 +2,7 @@ import json
 import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from sqlmodel import Session as DBSession, select
 from app.database import get_db
@@ -87,6 +88,55 @@ def list_messages(session_id: str, db: DBSession = Depends(get_db), current_user
         }
         for m in messages
     ]
+
+
+@router.get("/sessions/{session_id}/export")
+def export_session(session_id: str, db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    session = db.get(Session, session_id)
+    if not session or session.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    docs = db.exec(select(Document).where(Document.session_id == session_id)).all()
+    messages = db.exec(
+        select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at)
+    ).all()
+
+    doc_names = ", ".join(d.file_name for d in docs) or "None"
+    date_str = session.created_at.strftime("%B %d, %Y")
+
+    lines = [
+        f"# Study Session: {session.name}",
+        f"**Date:** {date_str}",
+        f"**Documents:** {doc_names}",
+        "",
+        "---",
+        "",
+    ]
+
+    for msg in messages:
+        if msg.role == "user":
+            lines.append(f"## Q: {msg.content}")
+            lines.append("")
+        elif msg.role == "assistant":
+            lines.append(msg.content)
+            lines.append("")
+            if msg.citations:
+                citations = json.loads(msg.citations)
+                lines.append("### Sources")
+                for c in citations:
+                    score = round(c.get("score", 0) * 100)
+                    lines.append(f"- {c['file']}, page {c['page']} ({score}% match)")
+                lines.append("")
+            lines.append("---")
+            lines.append("")
+
+    content = "\n".join(lines)
+    safe_name = session.name.replace(" ", "-")[:50]
+    return PlainTextResponse(
+        content=content,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.md"'},
+    )
 
 
 def _delete_session_data(session_id: str, db: DBSession):
