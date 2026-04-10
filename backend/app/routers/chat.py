@@ -17,6 +17,7 @@ from app.services.vector_store import VectorStore
 from app.services.llm import stream_answer
 from app.services.auth import get_current_user
 from app.models.chat_message import ChatMessage
+from app.services.rate_limiter import chat_limiter
 
 router = APIRouter()
 
@@ -32,6 +33,14 @@ async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_us
     session = db.get(Session, request.session_id)
     if not session or session.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    # Rate limit
+    if not chat_limiter.check(current_user.id):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many requests. Try again in {chat_limiter.retry_after(current_user.id)} seconds.",
+            headers={"Retry-After": str(chat_limiter.retry_after(current_user.id))},
+        )
 
     index_path = (pathlib.Path(settings.faiss_index_dir) / f"{request.session_id}.index").resolve()
     allowed = pathlib.Path(settings.faiss_index_dir).resolve()

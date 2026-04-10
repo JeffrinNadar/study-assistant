@@ -13,6 +13,7 @@ from app.services.embedder import embed_texts
 from app.services.vector_store import VectorStore
 from app.models.user import User
 from app.services.auth import get_current_user
+from app.services.rate_limiter import upload_limiter
 
 router = APIRouter()
 
@@ -28,6 +29,14 @@ async def upload(
 ):
     if len(files) > MAX_FILES:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_FILES} files per upload")
+
+    # Rate limit
+    if not upload_limiter.check(current_user.id):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Upload limit reached. Try again in {upload_limiter.retry_after(current_user.id)} seconds.",
+            headers={"Retry-After": str(upload_limiter.retry_after(current_user.id))},
+        )
 
     # Check file sizes (read content, then check size)
     file_contents = {}
