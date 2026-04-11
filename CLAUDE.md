@@ -14,7 +14,7 @@ cd backend
 source venv/bin/activate          # activate virtualenv (created with python3.11 -m venv venv)
 pip install -r requirements.txt
 uvicorn app.main:app --reload     # dev server on port 8000
-pytest                            # all 21 tests
+pytest                            # all 31 tests
 pytest tests/test_chat.py -v      # single test file
 ```
 
@@ -35,8 +35,8 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The
 1. FastAPI saves PDF to `uploads/{session_id}/{filename}` on disk
 2. PyMuPDF (`fitz`) extracts text page-by-page → `List[ParsedPage]`
 3. LangChain `RecursiveCharacterTextSplitter` splits into 512-char chunks, 50-char overlap → `List[TextChunk]`
-4. OpenAI `text-embedding-3-small` converts each chunk → 1536-dim float32 vector, L2-normalized
-5. `VectorStore` (FAISS `IndexIDMap(IndexFlatIP(1536))`) stores vectors keyed by SQLite `Chunk.id`
+4. Azure OpenAI `text-embedding-3-large` converts each chunk → 3072-dim float32 vector, L2-normalized
+5. `VectorStore` (FAISS `IndexIDMap(IndexFlatIP(3072))`) stores vectors keyed by SQLite `Chunk.id`
 6. SQLite (SQLModel) stores `Chunk` rows with full metadata; `Document` and `Session` rows track structure
 
 ### Chat Pipeline (`POST /chat` → SSE)
@@ -44,8 +44,8 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The
 2. FAISS inner-product search (= cosine similarity on normalized vectors) → top-5 chunk IDs + scores
 3. `Chunk` rows fetched from SQLite, sorted by score descending
 4. If top score < 0.70 → `low_confidence: true` in the citations SSE event
-5. Prompt assembled: system instruction + context chunks + last 10 history turns + question
-6. GPT-4o-mini streams tokens → SSE `token` events, then `citations` event, then `done`
+5. Prompt assembled: structured system instruction (## Answer, ## Key Concepts, ## Dig Deeper) + context chunks + last 10 history turns + question
+6. Azure OpenAI GPT-4.1 streams tokens → SSE `token` events, then `citations` event, then `done`
 
 ### Key Implementation Decisions
 - **FAISS `IndexIDMap`**: Maps SQLite `Chunk.id` as external IDs so vectors can be deleted by document ID when a document is removed. `IndexFlatIP` on L2-normalized vectors gives cosine similarity.
@@ -53,7 +53,8 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The
 - **`faiss-cpu==1.13.0`**: Version `1.8.0` specified in the original plan does not exist on PyPI; `1.13.0` is the correct current version.
 - **Path traversal guard**: `chat.py` and `documents.py` both validate that `{faiss_index_dir}/{session_id}.index` resolves within `faiss_index_dir` before opening the file.
 - **SSE error event**: If `stream_answer()` raises inside the generator, a `event: error` SSE event is yielded instead of silently closing the stream.
-- **Tailwind CSS v4**: The scaffold installed Tailwind v4 (not v3). v4 uses `@import "tailwindcss"` in CSS and a Vite plugin (`@tailwindcss/vite`) instead of PostCSS. Utility class names are the same as v3.
+- **Tailwind CSS v4**: Uses `@import "tailwindcss"` in CSS with a `@theme` block defining custom notebook palette and a Vite plugin (`@tailwindcss/vite`) instead of PostCSS. Custom colors: cream, kraft, ruled, margin, pencil, eraser, charcoal (light mode) and chalk-bg, chalk-text, chalk-muted (dark mode). Custom fonts: `--font-hand` (Caveat), `--font-sans` (Inter).
+- **Notebook theme UI**: Cream paper background with ruled lines, binder ring decorations on sidebar, pencil-blue accents, handwriting font (Caveat) for headings, chalkboard-green dark mode. CSS utility classes: `.bg-ruled`, `.bg-paper`, `.pencil-cursor`, `.binder-rings`.
 - **`react-markdown` className**: `react-markdown` v10 does not accept a `className` prop on `<ReactMarkdown>` — the `prose` class was removed from `MessageBubble.tsx`.
 - **SSE via `fetch` (not `EventSource`)**: The SSE client in `api/client.ts` uses `fetch` + `ReadableStream` with an `AbortController` because the backend uses `POST /chat`, and `EventSource` only supports GET.
 - **Empty FAISS index cleanup**: When deleting a document leaves 0 vectors, the FAISS index file is deleted rather than saved empty. This prevents 422/404 errors when chatting in a session with no documents.
@@ -71,6 +72,14 @@ Three-tier: React SPA → FastAPI backend → (FAISS + SQLite + OpenAI API). The
 - **Frontend auth gate**: `App.tsx` checks `useAuthStore.isAuthenticated` — renders `AuthPage` (login/signup form) when not authenticated, main app when authenticated. JWT stored in `localStorage`.
 - **Persistent chat history**: Chat messages are stored in a `ChatMessage` SQLite table. The `/chat` endpoint saves user messages before streaming and assistant messages (with citations) after streaming completes. History is loaded from DB (last 10 messages) for LLM context — the frontend no longer sends history. `GET /messages?session_id=` returns persisted messages. Frontend loads messages on session select via `Sidebar.tsx`.
 - **Fresh DBSession in SSE generator**: The assistant message is saved inside the SSE generator using a fresh `DBSession(engine)` context manager because the request-scoped DB session is closed by the time the generator runs. Chunk data is eagerly extracted as plain dicts before entering the generator to avoid SQLAlchemy detached-instance errors.
+- **In-memory rate limiting**: Sliding-window rate limiter (`services/rate_limiter.py`) with thread-safe Lock. Shared instances: `chat_limiter` (20 req/min) and `upload_limiter` (10 req/hour). Returns 429 with `Retry-After` header when exceeded.
+- **Regenerate response**: `POST /messages/{message_id}/regenerate` re-runs RAG pipeline for an existing assistant message. Finds the preceding user question, re-embeds, re-searches FAISS, re-streams via SSE, and updates the existing ChatMessage row in-place.
+- **Structured LLM responses**: System prompt instructs the model to format answers with `## Answer`, `## Key Concepts` (2-5 key terms), and `## Dig Deeper` (3 follow-up questions). Frontend parses `## Dig Deeper` into clickable suggestion pills.
+- **Markdown chat export**: `GET /sessions/{id}/export` generates a structured markdown file with session name, date, documents, Q&A pairs with sources. Frontend downloads via blob URL with Content-Disposition filename.
+- **Toast notifications**: Zustand `useToastStore` with auto-dismiss (4s). `ToastContainer` component renders fixed top-right stack with success/warning/error variants. Used throughout for upload, delete, export, and error feedback.
+- **Confirm dialogs**: `ConfirmDialog` modal component with notebook styling. Used for session and document deletion.
+- **Dark mode toggle**: Zustand `useThemeStore` persists to localStorage and applies `.dark` class on `<html>`. Toggle button (Moon/Sun icons) in sidebar. Chalkboard-green dark mode palette.
+- **Follow-up suggestion pills**: `MessageBubble` parses `## Dig Deeper` section from assistant responses using `extractDigDeeper()`. Renders clickable pill buttons on the latest message that auto-fill and submit the chat input.
 
 ## Backend Layout
 
@@ -82,24 +91,26 @@ backend/
 │   ├── database.py          # SQLite engine, create_db(), get_db() dependency
 │   ├── routers/
 │   │   ├── auth.py          # POST /auth/signup, POST /auth/login — JWT authentication
-│   │   ├── upload.py        # POST /upload — full ingestion pipeline (auth required)
-│   │   ├── chat.py          # POST /chat — SSE streaming with FAISS retrieval, persists messages (auth required)
-│   │   ├── sessions.py      # GET/POST/PATCH/DELETE /sessions; GET /messages; auto-prunes empty sessions (auth required)
+│   │   ├── upload.py        # POST /upload — full ingestion pipeline, rate-limited (auth required)
+│   │   ├── chat.py          # POST /chat — SSE streaming with FAISS retrieval, persists messages, rate-limited (auth required)
+│   │   │                    # POST /messages/{id}/regenerate — re-run RAG pipeline for existing message
+│   │   ├── sessions.py      # GET/POST/PATCH/DELETE /sessions; GET /messages; GET /sessions/{id}/export; auto-prunes empty sessions (auth required)
 │   │   └── documents.py     # GET /documents, DELETE /documents/{id}; cleans up empty FAISS index (auth required)
 │   ├── services/
 │   │   ├── auth.py          # hash_password, verify_password, create_access_token, get_current_user dependency
 │   │   ├── pdf_parser.py    # parse_pdf() → List[ParsedPage]
 │   │   ├── chunker.py       # chunk_pages() → List[TextChunk]
-│   │   ├── embedder.py      # embed_texts() → np.ndarray (N, 1536), L2-normalized
+│   │   ├── embedder.py      # embed_texts() → np.ndarray (N, 3072), L2-normalized
 │   │   ├── vector_store.py  # VectorStore: add_vectors, search, remove_by_ids, save, load
-│   │   └── llm.py           # stream_answer() → Generator[str]; GPT-4o-mini + prompt builder
+│   │   ├── llm.py           # stream_answer() → Generator[str]; GPT-4.1 + structured prompt (Answer/Key Concepts/Dig Deeper)
+│   │   └── rate_limiter.py  # RateLimiter class (sliding-window, thread-safe); chat_limiter, upload_limiter instances
 │   └── models/
 │       ├── user.py          # User(id, email, hashed_password, created_at)
 │       ├── chunk.py         # Chunk(id, session_id, doc_id, file_name, page_num, chunk_index, text, faiss_id)
 │       ├── document.py      # Document(id, session_id, file_name, pages, chunks)
 │       ├── session.py       # Session(id, user_id, name, created_at)
 │       └── chat_message.py  # ChatMessage(id, session_id, role, content, citations, low_confidence, created_at)
-├── tests/                   # 23 tests; all OpenAI calls mocked with unittest.mock
+├── tests/                   # 31 tests; all OpenAI calls mocked with unittest.mock
 ├── eval/
 │   ├── evaluate.py          # RAGAS evaluation script (pip install ragas datasets)
 │   └── test_set.json        # 3 placeholder Q&A pairs — replace with real questions
@@ -116,21 +127,28 @@ backend/
 ```
 frontend/src/
 ├── types.ts                 # Session, Document, Citation, Message, UploadResponse, AuthResponse, SSEEvent
+├── index.css                # Tailwind v4 @theme block (notebook palette, chalkboard dark mode, fonts),
+│                            # utility classes: .bg-ruled, .bg-paper, .pencil-cursor, .binder-rings,
+│                            # dark mode overrides, scrollbar styling, Key Concepts card styling
 ├── api/client.ts            # Axios instance + JWT interceptor; signup, login, logout,
 │                            # uploadFiles, getSessions, getDocuments, getMessages,
-│                            # deleteDocument, deleteSession, renameSession, streamChat (fetch + AbortController)
+│                            # deleteDocument, deleteSession, renameSession, streamChat, regenerateMessage,
+│                            # exportSession (fetch + AbortController)
 ├── store/
-│   ├── useAppStore.ts       # Zustand: sessions, messages, streaming state + actions (incl. updateSessionName, startNewChat)
-│   └── useAuthStore.ts      # Zustand: token, email, isAuthenticated, setAuth, clearAuth
+│   ├── useAppStore.ts       # Zustand: sessions, messages, streaming state + actions (incl. updateSessionName, startNewChat, regenerateMessage)
+│   ├── useAuthStore.ts      # Zustand: token, email, isAuthenticated, setAuth, clearAuth
+│   ├── useToastStore.ts     # Zustand: toast notifications with auto-dismiss (4s)
+│   └── useThemeStore.ts     # Zustand: dark mode toggle with localStorage persistence
 └── components/
-    ├── App.tsx              # Auth gate: shows AuthPage or main layout (Sidebar + ChatPanel)
-    ├── AuthPage.tsx         # Login/signup form with email + password; toggles between modes
-    ├── Sidebar.tsx          # New Chat button + session list (inline rename, delete) + document list + logout
-    ├── ChatPanel.tsx        # Message list, upload success banner, UploadZone, paperclip upload button, input bar + send
-    ├── MessageBubble.tsx    # User/assistant bubbles; markdown; streaming cursor ▍;
-    │                        # low-confidence amber warning; CitationCard list
-    ├── CitationCard.tsx     # Expandable: file, page, % match badge (green ≥70% / yellow <70%)
-    └── UploadZone.tsx       # react-dropzone; PDF only; 20 MB / 5 files max
+    ├── App.tsx              # Auth gate; responsive shell with hamburger menu, mobile sidebar overlay, pink margin line, ToastContainer
+    ├── AuthPage.tsx         # Notebook-themed login/signup: bg-paper bg-ruled, cream card with rotation, BookOpen icon, Caveat font
+    ├── Sidebar.tsx          # Kraft bg, binder-rings, dark mode toggle (Moon/Sun), toast notifications, ConfirmDialog for deletes, onClose prop for mobile
+    ├── ChatPanel.tsx        # Message list, Export Notes button, UploadZone, paperclip upload, toast notifications, follow-up suggestion auto-submit
+    ├── MessageBubble.tsx    # Notebook-styled bubbles; pencil cursor; regenerate button; extractDigDeeper() for suggestion pills; isLatest + onSuggestionClick props
+    ├── CitationCard.tsx     # Cream bg with ruled border, pencil-blue FileText icon, green/amber confidence badges, dark mode
+    ├── UploadZone.tsx       # Folder pocket styling, FolderOpen icon, drag-active scale, toast notifications
+    ├── Toast.tsx            # ToastContainer: fixed top-right stack, success/warning/error variants, lucide icons, slideIn animation
+    └── ConfirmDialog.tsx    # Modal dialog: notebook styling (tilted card, cream bg), backdrop click to cancel
 ```
 
 ## API Reference
@@ -173,6 +191,10 @@ event: error       data: {"detail": "..."} — only on exception
 ```
 Backend automatically saves user message before streaming and assistant message after streaming. History loaded from DB (last 10 turns).
 
+### `POST /messages/{message_id}/regenerate`
+Re-runs RAG pipeline for an existing assistant message. Finds the preceding user question, re-embeds, re-searches FAISS, streams a new response via SSE (same event format as `/chat`), and updates the existing message row in-place.
+429 if rate limited. 404 if message not found or not an assistant message.
+
 ### `GET /messages?session_id={id}`
 Returns persisted chat messages ordered by `created_at` ascending.
 Each message: `{ id, role, content, citations, low_confidence, created_at }`.
@@ -199,6 +221,10 @@ Returns documents for a session.
 Removes document, all its chunks from SQLite, and all its vectors from the FAISS index.
 If the FAISS index becomes empty after removal, the index file is deleted.
 Returns `{ "success": true, "chunks_removed": N }`.
+
+### `GET /sessions/{session_id}/export`
+Returns a structured markdown file download with session name, date, document list, and all Q&A pairs with citation sources.
+Content-Type: `text/markdown`. Content-Disposition: `attachment; filename="{session-name}.md"`.
 
 ## Environment Variables
 

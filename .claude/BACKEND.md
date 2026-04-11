@@ -9,7 +9,7 @@ cd backend
 source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload     # port 8000
-pytest                            # 21 tests
+pytest                            # 31 tests
 ```
 
 ## File Map
@@ -27,9 +27,9 @@ All endpoints (except `/ping` and `/auth/*`) require `Authorization: Bearer <tok
 | Router | Endpoints | Key Details |
 |--------|-----------|-------------|
 | `routers/auth.py` | `POST /auth/signup`, `POST /auth/login` | Accepts `{email, password}`. Returns `{access_token, token_type, user_id, email}`. Signup: 409 on duplicate email. Login: 401 on bad credentials |
-| `routers/upload.py` | `POST /upload` | Auth required. Accepts `files[]` + optional `session_id` (Form). Max 5 files, 20 MB each. Creates session with `user_id` if none. Verifies session ownership. Pipeline: save PDF -> parse -> chunk -> embed -> FAISS + SQLite |
-| `routers/chat.py` | `POST /chat` | Auth required. Body: `{session_id, question}`. Verifies session ownership. Path traversal guard. FAISS top-5 search. Low confidence if best score < 0.70. Auto-renames session from "New Session" to first question (truncated to 100 chars). Saves user message before streaming, saves assistant message after streaming (fresh DBSession inside generator). Loads last 10 messages from DB for LLM context. Returns SSE: token -> citations -> done (or error) |
-| `routers/sessions.py` | `GET /sessions`, `POST /sessions`, `PATCH /sessions/{id}`, `DELETE /sessions/{id}`, `GET /messages` | Auth required. All operations scoped to `current_user.id`. GET auto-prunes sessions with 0 docs. PATCH renames session (capped at 100 chars). DELETE verifies ownership, removes chunks, docs, chat messages, FAISS index, uploaded files. `GET /messages?session_id=` returns chat history ordered by `created_at` |
+| `routers/upload.py` | `POST /upload` | Auth required. Rate-limited (10 req/hour). Accepts `files[]` + optional `session_id` (Form). Max 5 files, 20 MB each. Creates session with `user_id` if none. Verifies session ownership. Pipeline: save PDF -> parse -> chunk -> embed -> FAISS + SQLite |
+| `routers/chat.py` | `POST /chat`, `POST /messages/{id}/regenerate` | Auth required. Rate-limited (20 req/min). `/chat`: Body `{session_id, question}`. Verifies session ownership. Path traversal guard. FAISS top-5 search. Low confidence if best score < 0.70. Auto-renames session. Saves user/assistant messages. Loads last 10 from DB. Returns SSE. `/messages/{id}/regenerate`: Re-runs RAG for an existing assistant message, finds preceding user question, streams new response via SSE, updates message in-place |
+| `routers/sessions.py` | `GET /sessions`, `POST /sessions`, `PATCH /sessions/{id}`, `DELETE /sessions/{id}`, `GET /messages`, `GET /sessions/{id}/export` | Auth required. All scoped to `current_user.id`. GET auto-prunes sessions with 0 docs. PATCH renames (capped 100 chars). DELETE cascades all data. `/export` returns structured markdown download with Q&A pairs and citation sources |
 | `routers/documents.py` | `GET /documents`, `DELETE /documents/{id}` | Auth required. GET requires `session_id` query param, verifies session ownership. DELETE verifies ownership via session, removes chunks + FAISS vectors; deletes index file if empty |
 
 ### Services
@@ -41,7 +41,8 @@ All endpoints (except `/ping` and `/auth/*`) require `Authorization: Bearer <tok
 | `services/embedder.py` | `embed_texts(texts) -> np.ndarray` | Azure OpenAI `text-embedding-3-large`, returns L2-normalized `(N, 3072)` array. `EMBEDDING_DIM = 3072`. Raises `ValueError` on empty input |
 | `services/vector_store.py` | `VectorStore` class | FAISS `IndexIDMap(IndexFlatIP(dim))`. Methods: `add_vectors`, `search(query, k=5)`, `remove_by_ids`, `save`, `load`. Property: `ntotal` |
 | `services/auth.py` | `hash_password`, `verify_password`, `create_access_token`, `get_current_user` | Uses `bcrypt` directly for hashing (not passlib). JWT via `python-jose`. `get_current_user` is a FastAPI `Depends` that decodes JWT and fetches User from DB. `OAuth2PasswordBearer(tokenUrl="/auth/login")` |
-| `services/llm.py` | `build_context(...)`, `stream_answer(...) -> Generator[str]` | Azure OpenAI GPT-4.1 streaming. System prompt instructs citation format `[Source: file, p.N]`. History capped at 10 turns |
+| `services/llm.py` | `build_context(...)`, `stream_answer(...) -> Generator[str]` | Azure OpenAI GPT-4.1 streaming. Structured system prompt: `## Answer`, `## Key Concepts` (2-5 terms), `## Dig Deeper` (3 follow-up questions). Citation format `[Source: file, p.N]`. History capped at 10 turns |
+| `services/rate_limiter.py` | `RateLimiter` class, `chat_limiter`, `upload_limiter` | In-memory sliding-window rate limiter with thread-safe Lock. `check(key) -> bool` records request and returns True if allowed. `retry_after(key) -> int` returns seconds until window resets. Shared instances: `chat_limiter` (20 req/60s), `upload_limiter` (10 req/3600s) |
 
 ### Models (SQLModel)
 
@@ -55,7 +56,7 @@ All endpoints (except `/ping` and `/auth/*`) require `Authorization: Bearer <tok
 
 **ChatMessage**: `id: int` (auto PK), `session_id: str` (indexed), `role: str` ("user"|"assistant"), `content: str`, `citations: str` (nullable, JSON), `low_confidence: bool` (default False), `created_at: datetime`
 
-## Tests (23 total)
+## Tests (31 total)
 
 | File | Count | What's Tested |
 |------|-------|---------------|
@@ -65,6 +66,8 @@ All endpoints (except `/ping` and `/auth/*`) require `Authorization: Bearer <tok
 | `test_chunker.py` | 4 | Produces multiple chunks, fields populated, index sequential per page, empty page produces none |
 | `test_embedder.py` | 4 | Returns ndarray, correct shape, vectors normalized, empty input raises |
 | `test_vector_store.py` | 5 | Add/search returns ids, scores are cosine, remove excludes from results, save/load persists, total_vectors count |
+| `test_rate_limiter.py` | 5 | Under limit allows, over limit blocks, retry_after returns seconds, separate users independent, window expiry resets |
+| `test_export.py` | 2 | Export returns markdown with session name/Q&A/documents, export requires auth (401) |
 
 - All OpenAI calls mocked with `unittest.mock`
 - `conftest.py` provides: `sample_pdf_path` (real tiny PDF via PyMuPDF), `test_user` (creates User in DB with bcrypt-hashed password, cleaned up after test), `auth_headers` (valid JWT Bearer header for test_user), `client` (TestClient)
@@ -123,3 +126,7 @@ Railway.app via `Dockerfile` (python:3.11-slim) and `railway.json`. Set env vars
 - Session auto-naming: `/chat` renames "New Session" to first question (truncated to 100 chars)
 - `PATCH /sessions/{id}` accepts `{"name": "..."}` for manual rename (capped at 100 chars)
 - Config auto-creates `data/`, `data/faiss_indices/`, and `uploads/` dirs on import
+- **Rate limiter is in-memory** — resets on server restart. No Redis dependency. Thread-safe via Lock. Per-user keyed by `user_id`
+- **Regenerate endpoint** — `POST /messages/{id}/regenerate` updates the existing ChatMessage row in-place (does not create a new row). Uses fresh DBSession inside the SSE generator
+- **Structured LLM responses** — system prompt instructs `## Answer`, `## Key Concepts`, `## Dig Deeper` sections. Frontend parses `## Dig Deeper` for suggestion pills
+- **Export endpoint** — `GET /sessions/{id}/export` returns `PlainTextResponse` with `text/markdown` media type and `Content-Disposition: attachment` header
