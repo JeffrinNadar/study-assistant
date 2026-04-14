@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
@@ -131,7 +132,9 @@ def export_session(session_id: str, db: DBSession = Depends(get_db), current_use
             lines.append("")
 
     content = "\n".join(lines)
-    safe_name = session.name.replace(" ", "-")[:50]
+    safe_name = re.sub(r'[^\w\s-]', '', session.name).replace(" ", "-")[:50]
+    if not safe_name:
+        safe_name = "study-session"
     return PlainTextResponse(
         content=content,
         media_type="text/markdown",

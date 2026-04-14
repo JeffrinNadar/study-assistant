@@ -72,10 +72,16 @@ async def upload(
     total_chunks = 0
 
     for upload_file in files:
-        # Save uploaded file to disk
+        # Save uploaded file to disk (sanitize filename to prevent path traversal)
+        safe_filename = os.path.basename(upload_file.filename or "upload.pdf")
+        if not safe_filename or safe_filename.startswith('.'):
+            safe_filename = "upload.pdf"
         session_upload_dir = os.path.join(settings.upload_dir, session_id)
         os.makedirs(session_upload_dir, exist_ok=True)
-        file_path = os.path.join(session_upload_dir, upload_file.filename)
+        file_path = os.path.join(session_upload_dir, safe_filename)
+        # Verify resolved path is within the upload directory
+        if not os.path.realpath(file_path).startswith(os.path.realpath(session_upload_dir)):
+            raise HTTPException(status_code=400, detail="Invalid filename")
         content = file_contents[upload_file.filename]
         with open(file_path, "wb") as f:
             f.write(content)

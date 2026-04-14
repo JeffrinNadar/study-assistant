@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
 from sqlmodel import Session as DBSession, select
 import json
+import logging
 import os
 import pathlib
 
@@ -19,13 +20,15 @@ from app.services.auth import get_current_user
 from app.models.chat_message import ChatMessage
 from app.services.rate_limiter import chat_limiter
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 LOW_CONFIDENCE_THRESHOLD = 0.70
 
 class ChatRequest(BaseModel):
     session_id: str
-    question: str
+    question: str = Field(min_length=1, max_length=5000)
 
 @router.post("/chat")
 async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_user: User = Depends(get_current_user)):
@@ -120,7 +123,8 @@ async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_us
 
             yield f"event: done\ndata: {json.dumps({})}\n\n"
         except Exception as exc:
-            yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
+            logger.exception("Chat stream error for session %s", session_id)
+            yield f"event: error\ndata: {json.dumps({'detail': 'An error occurred processing your request'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
@@ -215,6 +219,7 @@ async def regenerate(message_id: int, db: DBSession = Depends(get_db), current_u
 
             yield f"event: done\ndata: {json.dumps({})}\n\n"
         except Exception as exc:
-            yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
+            logger.exception("Regenerate stream error for message %s", original_msg_id)
+            yield f"event: error\ndata: {json.dumps({'detail': 'An error occurred processing your request'})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

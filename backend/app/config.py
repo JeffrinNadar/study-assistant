@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     embedding_deployment: str = "text-embedding-3-large"
     embedding_api_version: str = "2024-12-01-preview"
 
-    # JWT authentication
-    jwt_secret: str = "dev-secret-change-in-production"
+    # JWT authentication (no default — must be set via env var or .env file)
+    jwt_secret: str
     jwt_algorithm: str = "HS256"
     jwt_expiry_minutes: int = 1440  # 24 hours
 
