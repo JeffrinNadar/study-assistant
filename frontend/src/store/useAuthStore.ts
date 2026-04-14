@@ -1,5 +1,21 @@
 import { create } from 'zustand';
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 < Date.now();
+  } catch {
+    return true;
+  }
+}
+
+// Clear expired token from localStorage on load
+const storedToken = localStorage.getItem('access_token');
+if (storedToken && isTokenExpired(storedToken)) {
+  localStorage.removeItem('access_token');
+  localStorage.removeItem('user_email');
+}
+
 interface AuthState {
   token: string | null;
   email: string | null;

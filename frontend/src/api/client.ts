@@ -12,6 +12,18 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Auto-logout on 401 responses
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      const { useAuthStore } = await import('../store/useAuthStore');
+      useAuthStore.getState().clearAuth();
+    }
+    return Promise.reject(error);
+  },
+);
+
 export async function signup(email: string, password: string): Promise<AuthResponse> {
   const { data } = await api.post<AuthResponse>('/auth/signup', { email, password });
   localStorage.setItem('access_token', data.access_token);
@@ -27,6 +39,13 @@ export async function login(email: string, password: string): Promise<AuthRespon
 export function logout(): void {
   localStorage.removeItem('access_token');
   localStorage.removeItem('user_email');
+}
+
+async function handleUnauthorized(resp: Response): Promise<void> {
+  if (resp.status === 401) {
+    const { useAuthStore } = await import('../store/useAuthStore');
+    useAuthStore.getState().clearAuth();
+  }
 }
 
 export async function uploadFiles(
@@ -102,6 +121,7 @@ export function regenerateMessage(
       });
 
       if (!resp.ok) {
+        await handleUnauthorized(resp);
         const body = await resp.json().catch(() => null);
         throw new Error(body?.detail ?? `Regenerate failed: ${resp.status}`);
       }
@@ -143,7 +163,10 @@ export async function exportSession(sessionId: string): Promise<void> {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
-  if (!resp.ok) throw new Error('Export failed');
+  if (!resp.ok) {
+    await handleUnauthorized(resp);
+    throw new Error('Export failed');
+  }
 
   const disposition = resp.headers.get('Content-Disposition') ?? '';
   const filenameMatch = disposition.match(/filename="(.+)"/);
@@ -191,6 +214,7 @@ export function streamChat(
       });
 
       if (!resp.ok) {
+        await handleUnauthorized(resp);
         const body = await resp.json().catch(() => null);
         throw new Error(body?.detail ?? `Chat failed: ${resp.status}`);
       }
