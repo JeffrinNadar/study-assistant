@@ -118,17 +118,27 @@ body {
 
 /* Key Concepts study card styling */
 .prose-sm h2 + ul {
-  background-color: var(--color-cream);
+  background-color: var(--color-kraft);
   border: 1px solid var(--color-ruled);
   border-left: 3px solid var(--color-pencil);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   margin-top: 0.5rem;
+  color: var(--color-charcoal);
+}
+.prose-sm h2 + ul li,
+.prose-sm h2 + ul strong {
+  color: var(--color-charcoal);
 }
 .dark .prose-sm h2 + ul {
   background-color: var(--color-chalk-bg);
   border-color: var(--color-chalk-muted);
   border-left-color: var(--color-chalk-text);
+  color: var(--color-chalk-text);
+}
+.dark .prose-sm h2 + ul li,
+.dark .prose-sm h2 + ul strong {
+  color: var(--color-chalk-text);
 }
 
 /* Respect reduced motion preferences */
