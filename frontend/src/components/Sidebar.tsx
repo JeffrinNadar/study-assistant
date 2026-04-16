@@ -101,9 +101,9 @@ export function Sidebar({ onClose }: Props) {
       <div className="w-64 bg-kraft dark:bg-chalk-bg border-r border-ruled dark:border-chalk-muted flex flex-col h-full binder-rings">
         {/* Header */}
         <div className="p-4 border-b border-ruled dark:border-chalk-muted flex items-center justify-between">
-          <h1 className="font-hand text-xl text-pencil dark:text-chalk-text flex items-center gap-2">
-            <BookOpen size={20} /> Study Assistant
-          </h1>
+          <h2 className="font-hand text-xl text-pencil dark:text-chalk-text flex items-center gap-2">
+            <BookOpen size={20} aria-hidden="true" /> Study Assistant
+          </h2>
           {/* Close button (mobile) */}
           <button
             onClick={onClose}
@@ -131,7 +131,17 @@ export function Sidebar({ onClose }: Props) {
             {sessions.map((s) => (
               <div
                 key={s.id}
+                role="button"
+                tabIndex={editingId === s.id ? -1 : 0}
                 onClick={() => editingId !== s.id && selectSession(s.id)}
+                onKeyDown={(e) => {
+                  if (editingId !== s.id && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    selectSession(s.id);
+                  }
+                }}
+                aria-current={s.id === currentSessionId ? 'true' : undefined}
+                aria-label={`Session: ${s.name}, ${s.doc_count} document${s.doc_count !== 1 ? 's' : ''}`}
                 className={`w-full text-left px-3 py-2 rounded-lg text-sm mb-1 cursor-pointer flex items-center justify-between group transition-colors ${
                   s.id === currentSessionId
                     ? 'bg-pencil/10 text-pencil border-l-2 border-pencil dark:bg-chalk-bg-light dark:text-chalk-text'
@@ -150,6 +160,7 @@ export function Sidebar({ onClose }: Props) {
                           if (e.key === 'Escape') setEditingId(null);
                         }}
                         onClick={(e) => e.stopPropagation()}
+                        aria-label="Rename session"
                         autoFocus
                       />
                       <button onClick={confirmRename} className="text-green-600 shrink-0" aria-label="Confirm rename">

@@ -16,10 +16,13 @@ const styles = {
 export function ToastContainer() {
   const { toasts, removeToast } = useToastStore();
 
-  if (toasts.length === 0) return null;
-
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div
+      className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm"
+      aria-live="polite"
+      aria-atomic="false"
+      role="status"
+    >
       {toasts.map((toast) => {
         const Icon = icons[toast.type];
         return (
@@ -28,7 +31,7 @@ export function ToastContainer() {
             className={`flex items-center gap-2 rounded-lg border px-4 py-3 shadow-md text-sm animate-[slideIn_0.3s_ease-out] ${styles[toast.type]}`}
             role="alert"
           >
-            <Icon size={18} className="shrink-0" />
+            <Icon size={18} className="shrink-0" aria-hidden="true" />
             <span className="flex-1">{toast.message}</span>
             <button
               onClick={() => removeToast(toast.id)}

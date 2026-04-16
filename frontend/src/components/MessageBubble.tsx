@@ -72,8 +72,8 @@ export function MessageBubble({ message, isLatest, onSuggestionClick }: Props) {
 
         {/* Low confidence warning */}
         {message.lowConfidence && !message.isStreaming && (
-          <div className="flex items-center gap-1.5 mt-1.5 text-amber-600 dark:text-amber-400 text-xs">
-            <AlertTriangle size={12} />
+          <div className="flex items-center gap-1.5 mt-1.5 text-amber-700 dark:text-amber-300 text-xs" role="alert">
+            <AlertTriangle size={12} aria-hidden="true" />
             This answer may not be well-supported by your documents.
           </div>
         )}

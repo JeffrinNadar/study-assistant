@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Menu } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { ChatPanel } from './components/ChatPanel';
@@ -11,6 +11,16 @@ export default function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Close mobile sidebar on Escape key
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [sidebarOpen]);
+
   if (!isAuthenticated) {
     return (
       <>
@@ -22,6 +32,14 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-paper">
+      {/* Skip to content link */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-100 focus:bg-pencil focus:text-white focus:px-4 focus:py-2 focus:rounded-md focus:text-sm"
+      >
+        Skip to main content
+      </a>
+
       {/* Mobile hamburger */}
       <button
         onClick={() => setSidebarOpen(true)}
@@ -36,23 +54,26 @@ export default function App() {
         <div
           className="lg:hidden fixed inset-0 z-40 bg-black/30"
           onClick={() => setSidebarOpen(false)}
+          role="presentation"
+          aria-hidden="true"
         />
       )}
 
       {/* Sidebar */}
-      <div
+      <nav
         className={`fixed lg:static z-50 h-full transition-transform duration-200 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
+        aria-label="Session navigation"
       >
         <Sidebar onClose={() => setSidebarOpen(false)} />
-      </div>
+      </nav>
 
       {/* Margin line */}
-      <div className="hidden lg:block w-[3px] bg-margin shrink-0" />
+      <div className="hidden lg:block w-[3px] bg-margin shrink-0" aria-hidden="true" />
 
       {/* Main content */}
-      <main className="flex-1 overflow-hidden bg-ruled">
+      <main id="main-content" className="flex-1 overflow-hidden bg-ruled">
         <ChatPanel />
       </main>
 

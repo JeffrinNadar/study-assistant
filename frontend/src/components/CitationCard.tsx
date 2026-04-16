@@ -17,10 +17,11 @@ export function CitationCard({ citation, index }: Props) {
         className="w-full flex items-center justify-between px-3 py-2 hover:bg-kraft dark:hover:bg-chalk-bg transition-colors"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
+        aria-controls={`citation-content-${index}`}
         aria-label={`Citation ${index + 1}: ${citation.file}, page ${citation.page}, ${confidence}% match`}
       >
         <span className="flex items-center gap-2 text-charcoal font-medium dark:text-chalk-text">
-          <FileText size={14} className="text-pencil dark:text-chalk-muted" />
+          <FileText size={14} className="text-pencil dark:text-chalk-muted" aria-hidden="true" />
           [{index + 1}] {citation.file}, p.{citation.page}
         </span>
         <span className="flex items-center gap-2">
@@ -31,11 +32,11 @@ export function CitationCard({ citation, index }: Props) {
           }`}>
             {confidence}%
           </span>
-          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          {expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
         </span>
       </button>
       {expanded && (
-        <div className="px-3 pb-3 text-charcoal-light text-xs leading-relaxed border-t border-ruled dark:border-chalk-muted pt-2 dark:text-chalk-muted">
+        <div id={`citation-content-${index}`} className="px-3 pb-3 text-charcoal-light text-xs leading-relaxed border-t border-ruled dark:border-chalk-muted pt-2 dark:text-chalk-muted">
           {citation.text}
         </div>
       )}

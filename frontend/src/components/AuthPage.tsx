@@ -36,7 +36,7 @@ export function AuthPage() {
           <h1 className="font-hand text-3xl text-pencil">Study Assistant</h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-medium text-charcoal-light">
               Email
@@ -45,8 +45,10 @@ export function AuthPage() {
               id="email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              aria-describedby={error ? 'auth-error' : undefined}
               className="w-full rounded-md border border-ruled bg-white px-3 py-2 text-sm text-charcoal focus:border-pencil focus:outline-none focus:ring-1 focus:ring-pencil dark:bg-chalk-bg dark:border-chalk-muted dark:text-chalk-text"
               placeholder="you@example.com"
             />
@@ -54,21 +56,24 @@ export function AuthPage() {
 
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-charcoal-light">
-              Password
+              Password{!isLogin && <span className="font-normal text-charcoal-light/60"> (min. 8 characters)</span>}
             </label>
             <input
               id="password"
               type="password"
               required
+              autoComplete={isLogin ? 'current-password' : 'new-password'}
+              minLength={isLogin ? undefined : 8}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              aria-describedby={error ? 'auth-error' : undefined}
               className="w-full rounded-md border border-ruled bg-white px-3 py-2 text-sm text-charcoal focus:border-pencil focus:outline-none focus:ring-1 focus:ring-pencil dark:bg-chalk-bg dark:border-chalk-muted dark:text-chalk-text"
               placeholder="••••••••"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2 border border-red-200">{error}</p>
+            <p id="auth-error" role="alert" className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2 border border-red-200">{error}</p>
           )}
 
           <button

@@ -16,7 +16,7 @@
   --color-chalk-bg: #2C3E2D;
   --color-chalk-bg-light: #3A4F3B;
   --color-chalk-text: #F0EDE6;
-  --color-chalk-muted: #B8C4B8;
+  --color-chalk-muted: #D0D8D0;
 
   /* Font families */
   --font-hand: "Caveat", cursive;
@@ -129,4 +129,13 @@ body {
   background-color: var(--color-chalk-bg);
   border-color: var(--color-chalk-muted);
   border-left-color: var(--color-chalk-text);
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
