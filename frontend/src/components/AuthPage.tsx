@@ -14,6 +14,12 @@ export function AuthPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    if (!isLogin && password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = isLogin
@@ -22,7 +28,21 @@ export function AuthPage() {
       setAuth(res.access_token, res.email);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
-      setError(detail ?? 'Something went wrong');
+      let message = 'Something went wrong';
+      if (typeof detail === 'string') {
+        message = detail;
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        const first = detail[0];
+        const field = first?.loc?.[first.loc.length - 1];
+        if (field === 'password') {
+          message = 'Password must be between 8 and 128 characters.';
+        } else if (field === 'email') {
+          message = 'Please enter a valid email address.';
+        } else if (typeof first?.msg === 'string') {
+          message = first.msg;
+        }
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
