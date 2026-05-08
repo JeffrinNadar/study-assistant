@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import pathlib
+import time
 
 from app.database import get_db, engine
 from app.config import settings
@@ -57,9 +58,16 @@ async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_us
     store = VectorStore(index_path=index_path)
     store.load()
 
-    # Embed the question
+    # --- Per-stage timing ---
+    t0 = time.perf_counter()
     query_vector = embed_texts([request.question])
+    t_embed = (time.perf_counter() - t0) * 1000
+
+    t0 = time.perf_counter()
     chunk_ids, scores = store.search(query_vector, k=5)
+    t_search = (time.perf_counter() - t0) * 1000
+
+    logger.info("PIPELINE session=%s | embed=%.0fms | faiss_search=%.1fms", request.session_id, t_embed, t_search)
 
     if not chunk_ids:
         raise HTTPException(status_code=422, detail="No indexed content in session")
@@ -100,12 +108,29 @@ async def chat(request: ChatRequest, db: DBSession = Depends(get_db), current_us
     session_id = request.session_id
     question = request.question
 
+    pipeline_start = time.perf_counter()
+
     def event_stream():
         try:
             full_response = []
+            llm_start = time.perf_counter()
+            first_token_time = None
             for token in stream_answer(question, chunk_dicts, history):
+                if first_token_time is None:
+                    first_token_time = (time.perf_counter() - llm_start) * 1000
                 full_response.append(token)
                 yield f"event: token\ndata: {json.dumps({'content': token})}\n\n"
+
+            t_llm_total = (time.perf_counter() - llm_start) * 1000
+            t_pipeline_total = (time.perf_counter() - pipeline_start) * 1000
+
+            logger.info(
+                "LLM session=%s | ttfb=%.0fms | llm_total=%.0fms | pipeline_total=%.0fms",
+                session_id,
+                first_token_time or 0,
+                t_llm_total,
+                t_pipeline_total,
+            )
 
             yield f"event: citations\ndata: {json.dumps({'citations': chunk_dicts, 'low_confidence': low_confidence})}\n\n"
 

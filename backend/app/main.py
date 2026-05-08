@@ -1,3 +1,8 @@
+import time
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import create_db
@@ -7,7 +12,24 @@ from app.routers.sessions import router as sessions_router
 from app.routers.documents import router as documents_router
 from app.routers.auth import router as auth_router
 
+latency_logger = logging.getLogger("latency")
+
 app = FastAPI(title="RAG Study Assistant")
+
+# Request timing middleware
+@app.middleware("http")
+async def timing_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    response.headers["X-Response-Time-Ms"] = f"{duration_ms:.1f}"
+    latency_logger.info(
+        "%s %s — %.1fms",
+        request.method,
+        request.url.path,
+        duration_ms,
+    )
+    return response
 
 # Security headers middleware
 @app.middleware("http")
